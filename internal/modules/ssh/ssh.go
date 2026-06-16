@@ -10,11 +10,10 @@ import (
 )
 
 const (
-	configDir  = "/etc/ssh/sshd_config.d"
-	baseConf   = configDir + "/10-sshd-base.conf"
-	issueNet   = "/etc/issue.net"
-	issueFile  = "/etc/issue"
-	sshService = "ssh"
+	configDir = "/etc/ssh/sshd_config.d"
+	baseConf  = configDir + "/10-sshd-base.conf"
+	issueNet  = "/etc/issue.net"
+	issueFile = "/etc/issue"
 )
 
 type sshBaseOpts struct {
@@ -187,9 +186,9 @@ func (s *SSH) Reset() {
 func (s *SSH) showStatus() {
 	fmt.Println()
 
-	out, _ := exec.Command("systemctl", "is-active", sshService).Output()
+	out, _ := exec.Command("systemctl", "is-active", detectSSHService()).Output()
 	activo := strings.TrimSpace(string(out))
-	out2, _ := exec.Command("systemctl", "is-enabled", sshService).Output()
+	out2, _ := exec.Command("systemctl", "is-enabled", detectSSHService()).Output()
 	habilitado := strings.TrimSpace(string(out2))
 	fmt.Printf("  Servicio SSH:  activo=%-12s habilitado=%s\n", activo, habilitado)
 
@@ -428,7 +427,7 @@ func (s *SSH) validate() {
 	}
 
 	fmt.Println("\n  Últimas autenticaciones aceptadas:")
-	out, _ = exec.Command("journalctl", "-u", sshService, "-n", "5", "--no-pager", "--grep", "Accepted").Output()
+	out, _ = exec.Command("journalctl", "-u", detectSSHService(), "-n", "5", "--no-pager", "--grep", "Accepted").Output()
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || lines[0] == "" {
 		fmt.Println("    (sin registros recientes)")
@@ -442,6 +441,14 @@ func (s *SSH) validate() {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+// detectSSHService retorna "ssh" (Debian/Ubuntu) o "sshd" (RHEL-family).
+func detectSSHService() string {
+	if err := exec.Command("systemctl", "cat", "ssh.service").Run(); err == nil {
+		return "ssh"
+	}
+	return "sshd"
+}
 
 func sshdTest() bool {
 	fmt.Print("  Verificando sintaxis (sshd -t)... ")
@@ -458,7 +465,7 @@ func sshdTest() bool {
 
 func sshdRestart() bool {
 	fmt.Print("  Reiniciando sshd... ")
-	cmd := exec.Command("systemctl", "restart", sshService)
+	cmd := exec.Command("systemctl", "restart", detectSSHService())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -471,7 +478,7 @@ func sshdRestart() bool {
 
 func sshdReload() bool {
 	fmt.Print("  Recargando sshd... ")
-	cmd := exec.Command("systemctl", "reload", sshService)
+	cmd := exec.Command("systemctl", "reload", detectSSHService())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

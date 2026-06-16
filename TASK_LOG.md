@@ -378,3 +378,54 @@ desarrollo → build → deploy → validación → commit → cerrado
 - Compile-time interface assertion `var _ interface{...} = (*SSH)(nil)` en línea 516.
 
 **Próxima tarea:** TASK-011 — Módulo fail2ban (monitoreo de jails heredado de SM-Go)
+
+---
+
+## [TASK-011] Módulo fail2ban — monitoreo (solo lectura)
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6 planifica; Haiku 4.5 ejecuta)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-16 | Sonnet diseñó checklist D1–D10 en handoff; scope: monitoreo solo (no gestión), stdlib only |
+| desarrollo | ✅ completo | 2026-06-16  | fail2ban.go completo (~300 líneas): Menu 5 opciones + Status + IPs baneadas + Búsqueda + Geo + helpers |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó D1–D10: constantes ✅ struct ✅ interface ✅ Menu ✅ showStatus ✅ listBanned ✅ searchIP ✅ geoInfo ✅ helpers ✅ build ✅ vet ✅ commit ✅ |
+| commit     | ✅ completo | 2026-06-16  | Commit 5248cbe en branch dev — push a origin/dev; TASK_LOG.md actualizado |
+| cerrado    | ✅          | 2026-06-16  | Validación Haiku D1–D10 all pass — módulo fail2ban listo |
+
+**Funciones implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `showStatus()` | systemctl is-active/is-enabled, lista jails con "Currently banned" y "Total banned" |
+| `listBanned(jail)` | Obtiene IPs baneadas, geo on-demand (ipinfo.io), pagina ≥15 IPs |
+| `searchIP(ip)` | Busca IP en todos los jails activos, muestra resultado + geo |
+| `geoInfo(ip)` | Consulta ipinfo.io directa — país/ciudad/org/timezone/loc sin caché |
+| `readLine()` | Input interactivo con bufio.Scanner (bufio.Scanner en struct) |
+| `activeJails()` | Parsea `fail2ban-client status` para extraer lista de jails |
+| `parseBannedIPs()` | Extrae IPs de línea "Banned IP list:" |
+| `fetchGeo()` | HTTP GET a ipinfo.io, JSON decode, manejo de errores |
+
+**Alcance y diferencias SM-Go → SM-NG (resueltas):**
+
+| Aspecto | SM-Go | SM-NG | Decisión |
+|---------|-------|-------|----------|
+| Fuente datos | SQLite + fail2ban-client | fail2ban-client solo | Monitoreo no necesita persitencia |
+| Caché geo | SQLite 7 días | Sin caché | HTTP on-demand (simple, plan free: 50k/mes) |
+| Whitelist DB | ✓ (admin) | ❌ (no existe) | TASK-011 es monitoreo, no admin |
+| Ban/unban | ✓ (admin) | ❌ (no existe) | Prohibido en alcance "monitoreo" |
+| jail.local config | ✓ (admin) | ❌ (no existe) | No aplica a TASK-011 |
+| AbuseIPDB | ✓ (opcional) | ❌ (no existe) | Plan free ipinfo.io suficiente |
+| Dependencias externas | `modernc.org/sqlite` | **stdlib only** | go.mod limpio, sin requires |
+
+**Diseño técnico:**
+- `Order()=7`, `Name()="Fail2ban — monitoreo"`, `Menu()` loop interactivo con 5 opciones [1-4/0].
+- Struct Fail2ban con `*bufio.Scanner` — reemplaza `ui.ReadLine()` de SM-Go.
+- `geoInfo()` llama HTTP directo a ipinfo.io — sin token, plan free suficiente (50k/mes manual).
+- Compile-time interface assertion `var _ interface{...} = (*Fail2ban)(nil)` al final del archivo.
+- Reset() imprime aviso informativo — módulo es de solo lectura.
+
+**Próxima tarea:** TASK-012 — Deploy script e install.sh

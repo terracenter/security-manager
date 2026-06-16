@@ -113,9 +113,9 @@ func (f *Firewall) showStatus() {
 	fmt.Println(string(out))
 }
 
-// resetTable ejecuta flush table inet sm tras confirmación del operador.
+// resetTable ejecuta delete table inet sm tras confirmación del operador.
 func (f *Firewall) resetTable() {
-	fmt.Print("\n  ¿Confirmar reset (flush) de la tabla inet sm? [s/N]: ")
+	fmt.Print("\n  ¿Confirmar reset (delete) de la tabla inet sm? [s/N]: ")
 	if !f.scanner.Scan() {
 		return
 	}
@@ -123,12 +123,12 @@ func (f *Firewall) resetTable() {
 		fmt.Println("  Cancelado.")
 		return
 	}
-	out, err := exec.Command("nft", "flush", "table", "inet", "sm").CombinedOutput()
+	out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
 	if err != nil {
-		fmt.Printf("  ERROR en flush: %s\n", strings.TrimSpace(string(out)))
+		fmt.Printf("  ERROR en delete: %s\n", strings.TrimSpace(string(out)))
 		return
 	}
-	fmt.Println("  Tabla inet sm reseteada.")
+	fmt.Println("  Tabla inet sm eliminada.")
 }
 
 // _ ensures the interface is satisfied at compile time.

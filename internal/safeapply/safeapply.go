@@ -116,12 +116,22 @@ func applyRuleset(p Plan) error {
 // Retorna el nombre de la unit transient para cancelarla si el operador confirma.
 func scheduleDeadman(p Plan) (string, error) {
 	unitName := fmt.Sprintf("sm-ng-deadman-%d.service", time.Now().Unix())
+
+	var deadmanArgs []string
+	if _, err := os.Stat(p.BackupFile); os.IsNotExist(err) {
+		deadmanArgs = []string{"nft", "delete", "table", "inet", "sm"}
+		fmt.Println("  [safeapply] Primera instalación — deadman: nft delete table inet sm")
+	} else {
+		deadmanArgs = []string{"nft", "-f", p.BackupFile}
+	}
+
 	cmd := exec.Command(
 		"systemd-run",
 		"--unit="+unitName,
 		fmt.Sprintf("--on-active=%ds", p.DeadmanTimeout),
-		"nft", "-f", p.BackupFile,
 	)
+	cmd.Args = append(cmd.Args, deadmanArgs...)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("systemd-run: %s", strings.TrimSpace(string(out)))
@@ -137,7 +147,15 @@ func cancelDeadman(unit string) {
 }
 
 // rollback restaura el backup aplicando nft -f BackupFile.
+// En primera instalación (sin BackupFile), usa nft delete table inet sm.
 func rollback(p Plan) error {
+	if _, err := os.Stat(p.BackupFile); os.IsNotExist(err) {
+		out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("nft delete table inet sm (rollback primera-vez): %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
 	out, err := exec.Command("nft", "-f", p.BackupFile).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("nft -f %s (rollback): %s", p.BackupFile, strings.TrimSpace(string(out)))
