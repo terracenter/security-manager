@@ -306,9 +306,9 @@ desarrollo → build → deploy → validación → commit → cerrado
 |------------|-------------|-------------|-------|
 | desarrollo | ✅ completo | 2026-06-16  | hardroot.go adaptado de SM-Go: opciones SSH + sudoers + passwd |
 | build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
-| validación | ⏳ pendiente | —           | Espera verificación Haiku (C1–C7) |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C7: build ✅ vet ✅ interface ✅ struct ✅ Menu ✅ funciones ✅ commit ✅ |
 | commit     | ✅ completo | 2026-06-16  | Commit 9c30ca2 en branch dev — push a origin/dev |
-| cerrado    | ⏳          | —           | Pendiente verificación Haiku |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C7 all pass |
 
 **Funciones implementadas:**
 
@@ -326,3 +326,55 @@ desarrollo → build → deploy → validación → commit → cerrado
 - Sudo sin `log_output` (corregido en SM-Go).
 
 **Próxima tarea:** TASK-010 — Módulo ssh (sshd hardening heredado de SM-Go)
+
+---
+
+## [TASK-010] Módulo ssh — hardening sshd_config.d
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6 planifica; Haiku 4.5 ejecuta)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-16 | Sonnet diseñó checklist C1–C12 en handoff; identificadas 4 incompatibilidades SM-Go→SM-NG |
+| desarrollo | ✅ completo | 2026-06-16  | ssh.go completo (562 líneas): templates + Menu + 9 funciones + helpers bufio.Scanner |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C12: constantes ✅ struct ✅ interface ✅ Menu ✅ showStatus ✅ preflight ✅ applyBase-backup ✅ banners ✅ validate ✅ helpers ✅ build ✅ vet ✅ commit ✅ |
+| commit     | ✅ completo | 2026-06-16  | Commit fa93dd3 en branch dev — push a origin/dev |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C12 all pass — módulo ssh listo para producción |
+
+**Funciones implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `showStatus()` | Servicio SSH, archivos config, directivas sshd -T, puerto :22, banners |
+| `preflight()` | Verifica SUDO_USER→USER, membresía AllowGroups via id -Gn, ~/.ssh/authorized_keys si PasswordAuth=no |
+| `applyBase()` | Backup manual baseConf+.bak, idempotencia, sshd -t, rollback si falla, sshdReload |
+| `applyBanners()` | Escribe /etc/issue.net y /etc/issue con contenido legal bilingüe |
+| `validate()` | sshd -T filtrado, puerto ss -lnpt, últimas autenticaciones journalctl |
+| `readLine()` | Input interactivo con bufio.Scanner (reemplaza ui.ReadLine) |
+| `askAuthMethod()` | 3 modos: solo llave / llave-o-contraseña / llave-y-contraseña (MFA) |
+| `askPermitTunnel()` | Habilitar/deshabilitar túneles TUN/TAP SSH |
+| `askAllowGroups()` | Pide grupos permitidos, valida contra getent group |
+
+**Templating (SM-Go → SM-NG exacto):**
+- `baseConfTemplate`: hardening criptográfico post-cuántico (sntrup761x25519, algoritmos modernos, PermitRootLogin no) |
+- `issueNetContent`/`issueContent`: banners bilingües (inglés/español) con advertencia legal PCI-DSS/ISO 27001 |
+
+**Diferencias SM-Go → SM-NG (resueltas en TASK-010):**
+
+| Aspecto | SM-Go | SM-NG | Solución |
+|---------|-------|-------|----------|
+| Input interactivo | `ui.ReadLine()` | ❌ no existe | `bufio.Scanner` en struct SSH |
+| safeapply para SSH | `safeapply.Apply()` | ❌ solo nftables | Backup manual + `os.Rename()` + rollback |
+| Usuario actual | `sys.CurrentUser()` | ❌ no existe | `os.Getenv("SUDO_USER")` → `"USER"` → `"root"` |
+| FreeIPA | `20-sshd-freeipa.conf` | ❌ no incluido | Excluido de TASK-010 (TASK futura si se necesita) |
+
+**Diseño técnico:**
+- `Order()=6`, `Name()="SSH — hardening sshd_config"`, `Menu()` loop interactivo con 5 opciones.
+- Backup antes de escribir; rollback automático si `sshd -t` falla — red de seguridad contra auto-bloqueo.
+- `preflight()` detiene aplicación si usuario activo quedaría bloqueado por AllowGroups.
+- Compile-time interface assertion `var _ interface{...} = (*SSH)(nil)` en línea 516.
+
+**Próxima tarea:** TASK-011 — Módulo fail2ban (monitoreo de jails heredado de SM-Go)
