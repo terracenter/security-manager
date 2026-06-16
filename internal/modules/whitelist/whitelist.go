@@ -12,7 +12,6 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
-// Whitelist gestiona los sets sm_whitelist4/6 (SSoT de infra confiable).
 type Whitelist struct {
 	scanner *bufio.Scanner
 }
@@ -56,7 +55,6 @@ func (w *Whitelist) Menu() {
 	}
 }
 
-// addIP solicita una IP/CIDR al operador y la agrega al set correspondiente.
 func (w *Whitelist) addIP() {
 	fmt.Print("\n  IP o CIDR a agregar (ej: 192.168.1.0/24 o 2001:db8::1): ")
 	if !w.scanner.Scan() {
@@ -67,7 +65,7 @@ func (w *Whitelist) addIP() {
 		fmt.Println("  Entrada vacía. Cancelado.")
 		return
 	}
-	setName, err := resolveSet(entry)
+	setName, confFile, err := resolveSet(entry)
 	if err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return
@@ -76,10 +74,12 @@ func (w *Whitelist) addIP() {
 		fmt.Printf("  ERROR al agregar: %v\n", err)
 		return
 	}
+	if err := appendToFile(confFile, entry); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+	}
 	fmt.Printf("  Agregado %s → %s\n", entry, setName)
 }
 
-// addSelf detecta la IP de la sesión SSH activa y la agrega al whitelist.
 func (w *Whitelist) addSelf() {
 	ip := sys.GetSSHIP()
 	if ip == "" {
@@ -87,7 +87,7 @@ func (w *Whitelist) addSelf() {
 		fmt.Println("  Usa [1] para agregar tu IP manualmente.")
 		return
 	}
-	setName, err := resolveSet(ip)
+	setName, confFile, err := resolveSet(ip)
 	if err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return
@@ -105,10 +105,12 @@ func (w *Whitelist) addSelf() {
 		fmt.Printf("  ERROR al agregar: %v\n", err)
 		return
 	}
+	if err := appendToFile(confFile, ip); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+	}
 	fmt.Printf("  Agregado %s → %s\n", ip, setName)
 }
 
-// listIPs muestra el contenido de ambos sets del whitelist.
 func (w *Whitelist) listIPs() {
 	fmt.Println()
 	for _, setName := range []string{infra.SetWhitelist4, infra.SetWhitelist6} {
@@ -122,7 +124,6 @@ func (w *Whitelist) listIPs() {
 	}
 }
 
-// deleteIP solicita una IP/CIDR y la elimina del set correspondiente tras confirmación.
 func (w *Whitelist) deleteIP() {
 	fmt.Print("\n  IP o CIDR a eliminar: ")
 	if !w.scanner.Scan() {
@@ -133,7 +134,7 @@ func (w *Whitelist) deleteIP() {
 		fmt.Println("  Entrada vacía. Cancelado.")
 		return
 	}
-	setName, err := resolveSet(entry)
+	setName, confFile, err := resolveSet(entry)
 	if err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return
@@ -150,35 +151,34 @@ func (w *Whitelist) deleteIP() {
 		fmt.Printf("  ERROR al eliminar: %v\n", err)
 		return
 	}
+	if err := removeFromFile(confFile, entry); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+	}
 	fmt.Printf("  Eliminado %s de %s\n", entry, setName)
 }
 
-// resolveSet determina el set nftables (sm_whitelist4 o sm_whitelist6) para una entrada.
-// Acepta IPs sueltas y notación CIDR. Retorna error si el formato no es válido.
-func resolveSet(entry string) (string, error) {
-	// Intentar CIDR primero
+// resolveSet clasifica entry como IPv4 o IPv6 y retorna el set nftables y el archivo de config.
+func resolveSet(entry string) (setName, confFile string, err error) {
 	if strings.Contains(entry, "/") {
-		ip, _, err := net.ParseCIDR(entry)
-		if err != nil {
-			return "", fmt.Errorf("CIDR inválido %q: %w", entry, err)
+		ip, _, parseErr := net.ParseCIDR(entry)
+		if parseErr != nil {
+			return "", "", fmt.Errorf("CIDR inválido %q: %w", entry, parseErr)
 		}
 		if ip.To4() != nil {
-			return infra.SetWhitelist4, nil
+			return infra.SetWhitelist4, infra.Whitelist4File, nil
 		}
-		return infra.SetWhitelist6, nil
+		return infra.SetWhitelist6, infra.Whitelist6File, nil
 	}
-	// IP suelta
 	ip := net.ParseIP(entry)
 	if ip == nil {
-		return "", fmt.Errorf("dirección IP inválida: %q", entry)
+		return "", "", fmt.Errorf("dirección IP inválida: %q", entry)
 	}
 	if ip.To4() != nil {
-		return infra.SetWhitelist4, nil
+		return infra.SetWhitelist4, infra.Whitelist4File, nil
 	}
-	return infra.SetWhitelist6, nil
+	return infra.SetWhitelist6, infra.Whitelist6File, nil
 }
 
-// nftAddElement agrega una entrada al set indicado usando nft add element.
 func nftAddElement(setName, entry string) error {
 	out, err := exec.Command(
 		"nft", "add", "element", "inet", "sm", setName,
@@ -190,7 +190,6 @@ func nftAddElement(setName, entry string) error {
 	return nil
 }
 
-// nftDeleteElement elimina una entrada del set indicado usando nft delete element.
 func nftDeleteElement(setName, entry string) error {
 	out, err := exec.Command(
 		"nft", "delete", "element", "inet", "sm", setName,
@@ -200,6 +199,38 @@ func nftDeleteElement(setName, entry string) error {
 		return fmt.Errorf("nft delete element %s { %s }: %s", setName, entry, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// appendToFile agrega entry al archivo de config si no existe ya.
+func appendToFile(path, entry string) error {
+	existing, _ := infra.ReadLines(path)
+	for _, line := range existing {
+		if line == entry {
+			return nil
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintln(f, entry)
+	return err
+}
+
+// removeFromFile elimina entry del archivo de config.
+func removeFromFile(path, entry string) error {
+	lines, err := infra.ReadLines(path)
+	if err != nil {
+		return err
+	}
+	var updated []string
+	for _, l := range lines {
+		if l != entry {
+			updated = append(updated, l)
+		}
+	}
+	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
 
 // _ ensures the interface is satisfied at compile time.

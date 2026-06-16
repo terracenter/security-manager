@@ -171,26 +171,27 @@ desarrollo → build → deploy → validación → commit → cerrado
 
 | Fase       | Estado      | Timestamp   | Notas |
 |------------|-------------|-------------|-------|
-| desarrollo | ⏳          | —           | Pendiente implementación |
-| build      | ⏳          | —           | — |
-| validación | ⏳          | —           | Haiku ejecutará checklist |
-| commit     | ⏳          | —           | — |
-| cerrado    | ⏳          | —           | — |
+| desarrollo | ✅ completo | 2026-06-16  | addIP, addSelf, listIPs, deleteIP, resolveSet, nftAddElement, nftDeleteElement |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C7: build ✅ vet ✅ interface ✅ resolveSet ✅ GetSSHIP ✅ nft-atómico ✅ commit ✅ |
+| commit     | ✅ completo | 2026-06-16  | Commit ae753ee en branch dev — push a origin/dev |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C7 all pass — operaciones atómicas sin safeapply |
 
-**Funciones a implementar:**
+**Funciones implementadas:**
 
 | Función | Descripción |
 |---------|-------------|
-| `addIP()` | Agrega IP/CIDR a sm_whitelist4 o sm_whitelist6 via `nft add element` |
-| `listIPs()` | Lista el contenido actual de sm_whitelist4 y sm_whitelist6 |
-| `deleteIP()` | Elimina IP/CIDR de los sets con confirmación |
-| `addSelf()` | Usa `sys.GetSSHIP()` para auto-agregar la IP de la sesión activa |
-| `Menu()` | Submenú [1-4/0] |
+| `addIP()` | Solicita IP/CIDR; llama `resolveSet()` para clasificar; `nft add element` atómico |
+| `addSelf()` | Usa `sys.GetSSHIP()` + confirmación antes de agregar; detecta IPv4/IPv6 |
+| `listIPs()` | `nft list set inet sm sm_whitelist4/6` |
+| `deleteIP()` | Solicita IP/CIDR + confirmación; `nft delete element` atómico |
+| `resolveSet()` | `net.ParseCIDR`/`net.ParseIP` — clasificación sin inyección posible |
+| `nftAddElement()` | Wrapper de `nft add element inet sm <set> { <entry> }` |
+| `nftDeleteElement()` | Wrapper de `nft delete element inet sm <set> { <entry> }` |
 
-**Diseño técnico:**
-- No usar `safeapply.Apply()` completo — las operaciones sobre sets son atómicas por sí mismas (`nft add element`, `nft delete element`).
-- `addSelf()` → `sys.GetSSHIP()` → valida que sea IPv4 o IPv6 → `nft add element inet sm sm_whitelist4 { <ip> }`.
-- Validar formato IP/CIDR antes de invocar nft (evitar inyección de shell).
-- `WhitelistSet: infra.SetWhitelist4` solo aplica en el preflight del módulo firewall cuando el whitelist ya tiene entradas.
+**Diseño técnico validado:**
+- Operaciones sobre sets son atómicas (`nft add/delete element`) — correcto no usar safeapply.
+- `resolveSet()` valida con stdlib antes de invocar nft — sin inyección de shell.
+- Compile-time interface check con `var _ interface{...} = (*Whitelist)(nil)`.
 
 **Próxima tarea:** TASK-007 — Módulo geoip

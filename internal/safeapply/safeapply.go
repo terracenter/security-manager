@@ -25,6 +25,9 @@ type Plan struct {
 	WhitelistSet string
 	// Stdin permite inyectar un reader alternativo para tests (nil → os.Stdin).
 	Stdin io.Reader
+	// SkipBackup indica que el llamador ya hizo el backup antes de escribir RulesetFile.
+	// Usar cuando el backup debe capturar el ruleset ANTERIOR al rename (flujo correcto).
+	SkipBackup bool
 }
 
 // Apply ejecuta el ciclo completo: backup → preflight → apply → deadman → confirm/rollback.
@@ -37,8 +40,10 @@ func Apply(p Plan) error {
 		p.Stdin = os.Stdin
 	}
 
-	if err := backup(p); err != nil {
-		return fmt.Errorf("backup: %w", err)
+	if !p.SkipBackup {
+		if err := backup(p); err != nil {
+			return fmt.Errorf("backup: %w", err)
+		}
 	}
 	if err := preflight(p); err != nil {
 		return fmt.Errorf("preflight: %w", err)
