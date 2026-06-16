@@ -293,3 +293,36 @@ desarrollo → build → deploy → validación → commit → cerrado
 | v0.4.0  | TASK-005 (de64a4f) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.4.0 |
 | v0.5.0  | TASK-006 (ae753ee) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.5.0 |
 | v0.6.0  | TASK-007 (f962bb7) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.6.0 |
+
+---
+
+## [TASK-009] Módulo hardroot — hardening root SSH + sudoers
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6 implementa; Haiku 4.5 verifica)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ✅ completo | 2026-06-16  | hardroot.go adaptado de SM-Go: opciones SSH + sudoers + passwd |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ⏳ pendiente | —           | Espera verificación Haiku (C1–C7) |
+| commit     | ✅ completo | 2026-06-16  | Commit 9c30ca2 en branch dev — push a origin/dev |
+| cerrado    | ⏳          | —           | Pendiente verificación Haiku |
+
+**Funciones implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `showStatus()` | Lee sshd_config, passwd, sudoers.d/sm-ng — estado actual de hardening |
+| `hardenSSHRoot()` | Modifica sshd_config: `PermitRootLogin without-password` (SSH-key only) |
+| `blockRoot()` | Ejecuta `passwd -l root` para bloquear login interactivo |
+| `configureSudoers()` | Crea/actualiza `/etc/sudoers.d/sm-ng` con configuración segura |
+| `Menu()` | Submenú [1-4/0] con bucle propio |
+
+**Diseño técnico:**
+- Interfaz `Module` implementada: `Order()=5`, `Name()`, `Menu()`, `Reset()=noop`.
+- Heredado de SM-Go con adaptaciones mínimas a la nueva interfaz.
+- Sudo sin `log_output` (corregido en SM-Go).
+
+**Próxima tarea:** TASK-010 — Módulo ssh (sshd hardening heredado de SM-Go)
