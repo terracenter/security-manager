@@ -128,3 +128,35 @@ desarrollo → build → deploy → validación → commit → cerrado
 | validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C6: todas ✅. Apply() presente, Plan struct correcto, 8 funciones internas, cero panic() |
 | commit     | ✅ completo | 2026-06-16  | Commit 8c9c1d3 en branch dev — push a origin/dev |
 | cerrado    | ✅          | 2026-06-16  | TASK-004 validado y listo para próximo módulo (TASK-005: firewall module) |
+
+**Próxima tarea:** TASK-005 — Módulo firewall (implementación real con ruleset nftables 9 etapas)
+
+---
+
+## [TASK-005] Módulo firewall — ruleset nftables declarativo completo
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ✅ completo | 2026-06-16  | generateRuleset(9 etapas), applyBase(nft -c + safeapply), showStatus, resetTable, detectSSHPort |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ⏳          | —           | Haiku ejecutará checklist funcional |
+| commit     | ✅ completo | 2026-06-16  | Commit de64a4f en branch dev — push a origin/dev |
+| cerrado    | ⏳          | —           | Pendiente verificación Haiku |
+
+**Funciones implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `generateRuleset(sshPort int)` | Produce sm.nft completo: 4 sets vacíos + 9 etapas del pipeline |
+| `applyBase()` | Escribe archivo temporal, valida con `nft -c`, mueve a `sm.nft`, llama `safeapply.Apply()` |
+| `showStatus()` | `nft list table inet sm` |
+| `resetTable()` | `nft flush table inet sm` con confirmación previa |
+| `detectSSHPort()` | Lee `/etc/ssh/sshd_config` para puerto no estándar (default 22) |
+| `ensureConfDir()` | Crea `/etc/security-manager/` si no existe |
+| `Menu()` | Submenú [1-3/0] con bucle propio |
+
+**Próxima tarea:** TASK-006 — Módulo whitelist (gestión de sm_whitelist4/6 con safeapply)
