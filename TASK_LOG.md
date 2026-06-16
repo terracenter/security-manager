@@ -429,3 +429,60 @@ desarrollo → build → deploy → validación → commit → cerrado
 - Reset() imprime aviso informativo — módulo es de solo lectura.
 
 **Próxima tarea:** TASK-012 — Deploy script e install.sh
+
+---
+
+## [TASK-FIX-B1B2] Corrección bloqueantes B1 (deadman primera instalación) + B2 (ssh cross-distro)
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Haiku 4.5) — Ejecución de checklist validado por Opus
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-16 | Sonnet (Senior) diseñó checklist C1–C8; Opus (Arquitecto) validó y señaló 3 correcciones obligatorias |
+| validación | ✅ completo | 2026-06-16 | Opus veredicto OBSERVACIONES: (1) B1 usa `flush table` (lockout) → cambiar a `delete table` en C1/C2/C6; (2) B3 detectado en resetTable (C8); (3) B4 registrado como tarea de seguimiento aparte |
+| desarrollo | ✅ completo | 2026-06-16  | Haiku ejecutó C1–C8: safeapply (scheduleDeadman/rollback), ssh (detectSSHService), firewall (resetTable) |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK — sin errores |
+| commit     | ✅ completo | 2026-06-16  | Commit c55438b en branch dev — fix safeapply/firewall/ssh |
+| cerrado    | ✅          | 2026-06-16  | Haiku validación C1–C8 all pass — bloqueantes B1/B2/B3 solucionados; B4 para próximo |
+
+**Correcciones aplicadas:**
+
+| ID | Problema | Ubicación | Solución | Commit |
+|----|----------|-----------|----------|--------|
+| B1 | deadman/rollback fallan en primera instalación (`.bak` no existe) | `safeapply.go` | Verificar `os.Stat()` — si no existe usar `nft delete table inet sm` (C1/C2) | c55438b |
+| B2 | Módulo ssh hardcoded a unit `ssh` — rompe en RHEL-family | `ssh.go` | Agregar `detectSSHService()` que prueba `systemctl cat ssh.service` (C3/C4) | c55438b |
+| B3/C8 | resetTable() usa `nft flush table inet sm` — lockout sin deadman | `firewall.go:126` | Cambiar a `nft delete table inet sm` + ajustar textos | c55438b |
+| B4 | ruleset empieza con `flush ruleset` — borra `f2b-table` de fail2ban | `infra.go:135` | **NO ejecutar aquí** — registrada como TASK-B4 para decisión de Freddy | — |
+
+**Archivos modificados:**
+
+| Archivo | Cambios | Líneas |
+|---------|---------|--------|
+| `internal/safeapply/safeapply.go` | scheduleDeadman() y rollback() — rama `os.IsNotExist` | +30 |
+| `internal/modules/ssh/ssh.go` | Función detectSSHService() + eliminar `sshService = "ssh"` + 5 usos | +7 -1 |
+| `internal/modules/firewall/firewall.go` | resetTable() — `flush` → `delete` + ajustar textos | +5 |
+
+**Checklist C1–C8 ejecución:**
+
+| # | Ítem | Status | Notas |
+|---|------|--------|-------|
+| C1 | scheduleDeadman() — rama `os.IsNotExist` | ✅ | `nft delete table inet sm` cuando `.bak` no existe |
+| C2 | rollback() — rama `os.IsNotExist` | ✅ | Misma lógica; `grep -c "delete table" safeapply.go` → 3 |
+| C3 | Agregar `detectSSHService()` | ✅ | Función presente en ssh.go (helpers) |
+| C4 | Eliminar `sshService` constante + 5 usos | ✅ | showStatus (2), validate (1), sshdRestart (1), sshdReload (1) reemplazados |
+| C5 | Build + vet | ✅ | `go build ./...` OK; `go vet ./...` OK |
+| C6 | Verificación rama delete — no `flush` | ✅ | `grep "delete table"` → 3 (safeapply) + 1 (firewall) = 4; `grep "flush table"` → 0 |
+| C7 | Commit + TASK_LOG + vault | ✅ | Commit c55438b; TASK_LOG esta entrada; 00-proyecto-sm-ng actualizada |
+| C8 | resetTable() — `flush` → `delete` | ✅ | firewall.go:126 cambiado; texto prompt/error actualizado |
+
+**Hallazgo B4 (NO ejecutar):**
+
+Registrado en `.agents/handoffs/security-manager-NG.md` como TASK-B4 (seguimiento):
+- `infra.go:135`: ruleset empieza con `flush ruleset` → borra TODAS las tablas nft, incluida fail2ban `f2b-table`
+- Impacto: invalida coexistencia con fail2ban documentada
+- Fix propuesto: `delete table inet sm` (si existe) + `table inet sm {...}` — acota wipe a tabla propia
+- Estado: ⏳ pendiente — Sonnet planificará tarea aparte tras cerrar TASK-FIX-B1B2
+
+**Próxima tarea:** TASK-012 — Deploy script e install.sh (ya validado por Opus, pendiente ejecución)
