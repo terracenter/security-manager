@@ -1,0 +1,13 @@
+# Binarios compilados
+/security-manager-ng
+/dist/
+*.exe
+
+# Go
+*.test
+*.out
+vendor/
+
+# Editor / SO
+*.swp
+.DS_Store
