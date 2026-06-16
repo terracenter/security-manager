@@ -117,14 +117,14 @@ desarrollo → build → deploy → validación → commit → cerrado
 
 ## [TASK-004] safeapply.Apply() — ciclo completo backup → deadman → confirm/rollback
 
-**Inicio:** —
-**Agente:** Claude Code (Sonnet 4.6)
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6) — Implementación; Haiku 4.5 — Verificación
 **Branch:** `dev`
 
-| Fase       | Estado | Timestamp | Notas |
-|------------|--------|-----------|-------|
-| desarrollo | ⏳     | —         | Implementar `internal/safeapply/safeapply.go` |
-| build      | ⏳     | —         | — |
-| validación | ⏳     | —         | Haiku ejecutará checklist funcional |
-| commit     | ⏳     | —         | — |
-| cerrado    | ⏳     | —         | — |
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ✅ completo | 2026-06-16  | Implementación Sonnet: backup → preflight → nft -f → systemd-run → askConfirm(goroutine+select) → cancelDeadman/rollback |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C6: todas ✅. Apply() presente, Plan struct correcto, 8 funciones internas, cero panic() |
+| commit     | ✅ completo | 2026-06-16  | Commit 8c9c1d3 en branch dev — push a origin/dev |
+| cerrado    | ✅          | 2026-06-16  | TASK-004 validado y listo para próximo módulo (TASK-005: firewall module) |
