@@ -208,9 +208,9 @@ desarrollo → build → deploy → validación → commit → cerrado
 |------------|-------------|-------------|-------|
 | desarrollo | ✅ completo | 2026-06-16  | geoip.go completo + refactor infra + fix safeapply backup + persistencia whitelist |
 | build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
-| validación | ⏳          | —           | Haiku ejecutará checklist |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C8: build ✅ vet ✅ geoip-interface ✅ funciones-privadas ✅ infra-centralizado ✅ SkipBackup-fix ✅ persistencia-whitelist ✅ commit ✅ |
 | commit     | ✅ completo | 2026-06-16  | Commit f962bb7 en branch dev — push a origin/dev |
-| cerrado    | ⏳          | —           | Pendiente validación Haiku |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C8 all pass — geoip + refactor infra + fix safeapply backup |
 
 **Archivos modificados:**
 
@@ -237,3 +237,59 @@ desarrollo → build → deploy → validación → commit → cerrado
 - Fix: `SkipBackup: true` + backup manual ANTES del rename en todos los módulos que aplican ruleset.
 
 **Próxima tarea:** TASK-008 — Módulo blacklist
+
+---
+
+## [TASK-008] Módulo blacklist — bans manuales sm_blacklist4/6
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6 implementa; Haiku 4.5 verifica)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ✅ completo | 2026-06-16  | blacklist.go completo: addIP, listIPs, deleteIP, flushAll, resolveSet atómico |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C9: build ✅ vet ✅ interface ✅ Order/Name ✅ funciones ✅ infra-constants ✅ flushAll-confirm ✅ git-state ✅ commit ✅ |
+| commit     | ✅ completo | 2026-06-16  | Commit f76a1ab en branch dev — push a origin/dev |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C9 all pass — patrón idéntico a whitelist |
+
+**Funciones implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `addIP()` | Solicita IP/CIDR; `resolveSet()` clasifica; `nft add element` atómico + persistencia |
+| `listIPs()` | `nft list set inet sm sm_blacklist4/6` |
+| `deleteIP()` | IP/CIDR + confirmación; `nft delete element` atómico + remoción del archivo |
+| `flushAll()` | Confirmación `[s/N]` → `nft flush set` ambos sets + truncate de archivos conf |
+| `resolveSet()` | `net.ParseCIDR`/`net.ParseIP` — clasificación IPv4/IPv6 sin inyección de shell |
+| `nftAddElement()` | Wrapper `nft add element inet sm <set> { <entry> }` |
+| `nftDeleteElement()` | Wrapper `nft delete element inet sm <set> { <entry> }` |
+
+**Diseño técnico:**
+- Operaciones atómicas (`nft add/delete element`) — no requiere safeapply.
+- Persistencia simétrica a whitelist: `appendToFile`/`removeFromFile` → `blacklist4/6.conf`.
+- `flushAll()` tiene doble protección: confirmación interactiva + truncate solo si nft flush OK.
+- Compile-time interface check con `var _ interface{...} = (*Blacklist)(nil)` en línea 233.
+
+**Próxima tarea:** TASK-009 — Módulo hardroot (hardening root SSH + sudoers)
+
+---
+
+## [TASK-RELEASES] GitHub Releases retroactivos v0.4.0–v0.6.0
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6 planifica; Haiku 4.5 ejecuta)
+**Branch:** `main` (tags sobre commits de `dev`)
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-16 | Sonnet preparó checklist en handoff; tags v0.1.0–v0.6.0 ya existían |
+| ejecución  | ✅ completo | 2026-06-16  | Haiku creó 3 releases retroactivos (C1–C3) y verificó los 6 (C4) |
+| cerrado    | ✅          | 2026-06-16  | 6 releases en GitHub: v0.1.0–v0.6.0, todos Pre-release |
+
+| Release | Tag commit | URL |
+|---------|-----------|-----|
+| v0.4.0  | TASK-005 (de64a4f) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.4.0 |
+| v0.5.0  | TASK-006 (ae753ee) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.5.0 |
+| v0.6.0  | TASK-007 (f962bb7) | https://github.com/terracenter/Security-Manager-Ng/releases/tag/v0.6.0 |
