@@ -195,3 +195,45 @@ desarrollo → build → deploy → validación → commit → cerrado
 - Compile-time interface check con `var _ interface{...} = (*Whitelist)(nil)`.
 
 **Próxima tarea:** TASK-007 — Módulo geoip
+
+---
+
+## [TASK-007] Módulo geoip — bloqueo por país con ipdeny.com
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ✅ completo | 2026-06-16  | geoip.go completo + refactor infra + fix safeapply backup + persistencia whitelist |
+| build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
+| validación | ⏳          | —           | Haiku ejecutará checklist |
+| commit     | ✅ completo | 2026-06-16  | Commit f962bb7 en branch dev — push a origin/dev |
+| cerrado    | ⏳          | —           | Pendiente validación Haiku |
+
+**Archivos modificados:**
+
+| Archivo | Cambio |
+|---------|--------|
+| `internal/modules/geoip/geoip.go` | Implementación completa (stub → módulo real) |
+| `internal/modules/infra/infra.go` | `GenerateRuleset()`, `DetectSSHPort()`, `LoadGeoIPData()`, `ReadLines()`, constantes geoip/persist |
+| `internal/modules/firewall/firewall.go` | Usa `infra.GenerateRuleset()`, backup correcto pre-rename |
+| `internal/modules/whitelist/whitelist.go` | Persistencia add/delete en whitelist4.conf/whitelist6.conf |
+| `internal/safeapply/safeapply.go` | Campo `SkipBackup bool`; fix bug backup post-rename |
+
+**Funciones geoip implementadas:**
+
+| Función | Descripción |
+|---------|-------------|
+| `addCountry()` | Agrega CC a blocked_countries.conf (valida ISO 3166-1 alfa-2) |
+| `removeCountry()` | Elimina CC del config |
+| `listCountries()` | Muestra países con estado de zone files (✓/⚠) |
+| `updateRanges()` | Descarga zone files de ipdeny.com (IPv4 + IPv6) via curl |
+| `applyGeoIP()` | LoadGeoIPData → GenerateRuleset → nft -c → backup → rename → safeapply |
+
+**Bug corregido (pre-existente desde TASK-005):**
+- `safeapply.Apply()` hacía backup DESPUÉS del rename → `sm.nft.bak` = nuevo ruleset → deadman rollbackeaba al mismo estado.
+- Fix: `SkipBackup: true` + backup manual ANTES del rename en todos los módulos que aplican ruleset.
+
+**Próxima tarea:** TASK-008 — Módulo blacklist
