@@ -100,7 +100,7 @@ desarrollo → build → deploy → validación → commit → cerrado
 |------------|-------------|-------------|-------|
 | desarrollo | ✅ completo | 2026-06-16  | main.go con initModules, printMenu, loop de selección |
 | build      | ✅ completo | 2026-06-16  | `go build ./...` OK, `go vet ./...` OK |
-| validación | 🔄 pendiente | —          | Haiku verifica compilación + menú + selección 0 |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C6: build ✅ vet ✅ menú ✅ input-inválido ✅ git-log ✅ |
 | commit     | ✅ completo | 2026-06-16  | Commit a5c0d3c (junto a TASK-002) en branch dev |
 | deploy     | ✅ completo | 2026-06-16  | Push a origin/dev |
 
@@ -109,4 +109,22 @@ desarrollo → build → deploy → validación → commit → cerrado
 - `printMenu()`: encabezado, usuario activo vía `sys.CurrentUser()`, lista numerada [1–7] + [0] Salir
 - Loop principal: lee stdin, despacha a `mods[sel-1].Menu()` o termina con 0
 
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C6 all pass |
+
 **Próxima tarea:** TASK-004 — Implementar `safeapply.Apply()` (backup → preflight → deadman → confirm/rollback)
+
+---
+
+## [TASK-004] safeapply.Apply() — ciclo completo backup → deadman → confirm/rollback
+
+**Inicio:** —
+**Agente:** Claude Code (Sonnet 4.6)
+**Branch:** `dev`
+
+| Fase       | Estado | Timestamp | Notas |
+|------------|--------|-----------|-------|
+| desarrollo | ⏳     | —         | Implementar `internal/safeapply/safeapply.go` |
+| build      | ⏳     | —         | — |
+| validación | ⏳     | —         | Haiku ejecutará checklist funcional |
+| commit     | ⏳     | —         | — |
+| cerrado    | ⏳     | —         | — |
