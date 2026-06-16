@@ -143,9 +143,9 @@ desarrollo → build → deploy → validación → commit → cerrado
 |------------|-------------|-------------|-------|
 | desarrollo | ✅ completo | 2026-06-16  | generateRuleset(9 etapas), applyBase(nft -c + safeapply), showStatus, resetTable, detectSSHPort |
 | build      | ✅ completo | 2026-06-16  | `go build ./...` OK; `go vet ./...` OK |
-| validación | ⏳          | —           | Haiku ejecutará checklist funcional |
+| validación | ✅ completo | 2026-06-16  | Haiku verificó C1–C7: build ✅ vet ✅ interface ✅ generateRuleset ✅ safeapply ✅ nft -c ✅ commit ✅ |
 | commit     | ✅ completo | 2026-06-16  | Commit de64a4f en branch dev — push a origin/dev |
-| cerrado    | ⏳          | —           | Pendiente verificación Haiku |
+| cerrado    | ✅          | 2026-06-16  | Verificación Haiku C1–C7 all pass — implementación sólida |
 
 **Funciones implementadas:**
 
@@ -160,3 +160,37 @@ desarrollo → build → deploy → validación → commit → cerrado
 | `Menu()` | Submenú [1-3/0] con bucle propio |
 
 **Próxima tarea:** TASK-006 — Módulo whitelist (gestión de sm_whitelist4/6 con safeapply)
+
+---
+
+## [TASK-006] Módulo whitelist — gestión de sm_whitelist4/6
+
+**Inicio:** 2026-06-16
+**Agente:** Claude Code (Sonnet 4.6)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| desarrollo | ⏳          | —           | Pendiente implementación |
+| build      | ⏳          | —           | — |
+| validación | ⏳          | —           | Haiku ejecutará checklist |
+| commit     | ⏳          | —           | — |
+| cerrado    | ⏳          | —           | — |
+
+**Funciones a implementar:**
+
+| Función | Descripción |
+|---------|-------------|
+| `addIP()` | Agrega IP/CIDR a sm_whitelist4 o sm_whitelist6 via `nft add element` |
+| `listIPs()` | Lista el contenido actual de sm_whitelist4 y sm_whitelist6 |
+| `deleteIP()` | Elimina IP/CIDR de los sets con confirmación |
+| `addSelf()` | Usa `sys.GetSSHIP()` para auto-agregar la IP de la sesión activa |
+| `Menu()` | Submenú [1-4/0] |
+
+**Diseño técnico:**
+- No usar `safeapply.Apply()` completo — las operaciones sobre sets son atómicas por sí mismas (`nft add element`, `nft delete element`).
+- `addSelf()` → `sys.GetSSHIP()` → valida que sea IPv4 o IPv6 → `nft add element inet sm sm_whitelist4 { <ip> }`.
+- Validar formato IP/CIDR antes de invocar nft (evitar inyección de shell).
+- `WhitelistSet: infra.SetWhitelist4` solo aplica en el preflight del módulo firewall cuando el whitelist ya tiene entradas.
+
+**Próxima tarea:** TASK-007 — Módulo geoip
