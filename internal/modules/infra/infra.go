@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -44,6 +45,19 @@ type CountrySet struct {
 	CC      string
 	Ranges4 []string
 	Ranges6 []string
+}
+
+// GlobalServices contiene los servicios VPN detectados en el host.
+type GlobalServices struct {
+	WireGuardPorts  []int
+	OpenVPNRules    []OVPNRule
+	TailscaleActive bool
+}
+
+// OVPNRule representa un servidor OpenVPN detectado.
+type OVPNRule struct {
+	Port  int
+	Proto string // "tcp" | "udp"
 }
 
 // LoadGeoIPData lee allowed_countries.conf y los archivos zone de GeoIPDir.
@@ -113,12 +127,139 @@ func DetectSSHPort() int {
 	return 22
 }
 
+// parseWireGuardPort extrae el puerto de escucha de un archivo de configuración WireGuard.
+func parseWireGuardPort(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "listenport") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				var port int
+				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &port)
+				return port
+			}
+		}
+	}
+	return 0
+}
+
+// matchLine verifica si el contenido contiene una línea que comienza con el prefijo.
+func matchLine(content, prefix string) bool {
+	cleanPrefix := strings.TrimPrefix(prefix, "^")
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), cleanPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseOpenVPNServer verifica si un archivo es una configuración de servidor OpenVPN válida
+// y extrae puerto y protocolo.
+func parseOpenVPNServer(path string) (OVPNRule, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return OVPNRule{}, false
+	}
+	content := string(data)
+	// Descartar configs cliente
+	if matchLine(content, "^client") || matchLine(content, "^remote ") {
+		return OVPNRule{}, false
+	}
+	// Verificar que es servidor
+	if !matchLine(content, "mode server") && !matchLine(content, "^server ") {
+		return OVPNRule{}, false
+	}
+	port := 1194
+	proto := "udp"
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "port ") {
+			fmt.Sscanf(line[5:], "%d", &port)
+		}
+		if strings.HasPrefix(line, "proto ") {
+			p := strings.ToLower(strings.TrimSpace(line[6:]))
+			proto = strings.TrimSuffix(p, "6") // "udp6" → "udp"
+		}
+	}
+	return OVPNRule{Port: port, Proto: proto}, true
+}
+
+// DetectGlobalServices detecta servicios VPN instalados en el host.
+// Se llama en cada GenerateRuleset() para generar excepciones mundiales en stage 7a.
+func DetectGlobalServices() GlobalServices {
+	var svc GlobalServices
+
+	// WireGuard — path idéntico en todas las distros
+	wgFiles, _ := filepath.Glob("/etc/wireguard/*.conf")
+	seenWG := map[int]bool{}
+	for _, f := range wgFiles {
+		port := parseWireGuardPort(f)
+		if port > 0 && !seenWG[port] {
+			svc.WireGuardPorts = append(svc.WireGuardPorts, port)
+			seenWG[port] = true
+		}
+	}
+
+	// OpenVPN servidor — paths Debian/Ubuntu + RHEL/AlmaLinux/Rocky
+	ovpnPatterns := []string{
+		"/etc/openvpn/server/*.conf",
+		"/etc/openvpn/*.conf",
+	}
+	seenOVPN := map[string]bool{}
+	for _, pattern := range ovpnPatterns {
+		files, _ := filepath.Glob(pattern)
+		for _, f := range files {
+			rule, ok := parseOpenVPNServer(f)
+			if !ok {
+				continue
+			}
+			key := fmt.Sprintf("%s/%d", rule.Proto, rule.Port)
+			if !seenOVPN[key] {
+				svc.OpenVPNRules = append(svc.OpenVPNRules, rule)
+				seenOVPN[key] = true
+			}
+		}
+	}
+
+	// Tailscale — interfaz kernel, cross-distro
+	if _, err := os.Stat("/sys/class/net/tailscale0"); err == nil {
+		svc.TailscaleActive = true
+	}
+
+	return svc
+}
+
+// globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN.
+func globalExceptionsBlock(svc GlobalServices) string {
+	var sb strings.Builder
+	sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01\n")
+	for _, port := range svc.WireGuardPorts {
+		sb.WriteString(fmt.Sprintf("        udp dport %d accept   # WireGuard (auto-detectado)\n", port))
+	}
+	for _, rule := range svc.OpenVPNRules {
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist desde los archivos de config para preservar entradas entre recargas.
 func GenerateRuleset(sshPort int, geoip GeoIPData) string {
+	svc := DetectGlobalServices()
+
 	sshComment := ""
 	if sshPort != 22 {
 		sshComment = " # puerto personalizado (sshd_config)"
+	}
+
+	tailscaleRule := ""
+	if svc.TailscaleActive {
+		tailscaleRule = "\n        iif \"tailscale0\" accept   # Tailscale (red de gestión — auto-detectado)"
 	}
 
 	wl4, _ := ReadLines(Whitelist4File)
@@ -151,8 +292,8 @@ table inet sm {
         # 1 · Conntrack fast-path
         ct state established,related accept
 
-        # 2 · Loopback
-        iif lo accept
+        # 2 · Loopback (+ interfaces de gestión auto-detectadas)
+        iif lo accept%s
 
         # 3 · Conntrack inválido
         ct state invalid drop
@@ -175,9 +316,8 @@ table inet sm {
         ip  saddr @%s accept
         ip6 saddr @%s accept
 
-        # 7 · GeoIP ALLOWLIST
-        # Excepción mundial: port 80 (Let's Encrypt HTTP-01 ACME challenge)
-        tcp dport 80 accept
+        # 7 · GeoIP ALLOWLIST + excepciones mundiales (VPN auto-detectada)
+%s
 %s
         # 8 · Servicios permitidos
         tcp dport %d accept%s
@@ -202,6 +342,8 @@ table inet sm {
 		geoipSetsBlock(geoip),
 		SetBlacklist4, SetBlacklist6,
 		SetWhitelist4, SetWhitelist6,
+		tailscaleRule,
+		globalExceptionsBlock(svc),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
 	)
