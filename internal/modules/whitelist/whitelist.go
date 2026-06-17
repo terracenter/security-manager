@@ -31,6 +31,7 @@ func (w *Whitelist) Menu() {
 		fmt.Println("  │  [2] Agregar mi IP (sesión SSH activa)  │")
 		fmt.Println("  │  [3] Listar whitelist actual            │")
 		fmt.Println("  │  [4] Eliminar IP/CIDR                   │")
+		fmt.Println("  │  [5] Sincronizar con fail2ban           │")
 		fmt.Println("  │  [0] Volver                             │")
 		fmt.Println("  └────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
@@ -47,6 +48,8 @@ func (w *Whitelist) Menu() {
 			w.listIPs()
 		case "4":
 			w.deleteIP()
+		case "5":
+			syncFail2banIgnoreip()
 		case "0":
 			return
 		default:
@@ -78,6 +81,7 @@ func (w *Whitelist) addIP() {
 		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
 	}
 	fmt.Printf("  Agregado %s → %s\n", entry, setName)
+	syncFail2banIgnoreip()
 }
 
 func (w *Whitelist) addSelf() {
@@ -109,6 +113,7 @@ func (w *Whitelist) addSelf() {
 		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
 	}
 	fmt.Printf("  Agregado %s → %s\n", ip, setName)
+	syncFail2banIgnoreip()
 }
 
 func (w *Whitelist) listIPs() {
@@ -155,6 +160,7 @@ func (w *Whitelist) deleteIP() {
 		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
 	}
 	fmt.Printf("  Eliminado %s de %s\n", entry, setName)
+	syncFail2banIgnoreip()
 }
 
 // resolveSet clasifica entry como IPv4 o IPv6 y retorna el set nftables y el archivo de config.
@@ -231,6 +237,30 @@ func removeFromFile(path, entry string) error {
 		}
 	}
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
+}
+
+const fail2banIgnoreipFile = "/etc/fail2ban/jail.d/sm-ng-whitelist.conf"
+
+// syncFail2banIgnoreip escribe las IPs del whitelist en fail2ban jail.d y recarga.
+// Se llama automáticamente al agregar/eliminar entradas. Fallo no es fatal.
+func syncFail2banIgnoreip() {
+	wl4, _ := infra.ReadLines(infra.Whitelist4File)
+	wl6, _ := infra.ReadLines(infra.Whitelist6File)
+	all := append(wl4, wl6...)
+
+	if len(all) == 0 {
+		os.Remove(fail2banIgnoreipFile)
+		exec.Command("fail2ban-client", "reload").Run()
+		return
+	}
+
+	content := fmt.Sprintf("[DEFAULT]\nignoreip = %s\n", strings.Join(all, " "))
+	if err := os.WriteFile(fail2banIgnoreipFile, []byte(content), 0o640); err != nil {
+		fmt.Printf("  ⚠  fail2ban ignoreip: no se pudo escribir %s: %v\n", fail2banIgnoreipFile, err)
+		return
+	}
+	exec.Command("fail2ban-client", "reload").Run()
+	fmt.Println("  ✓  fail2ban ignoreip sincronizado.")
 }
 
 // _ ensures the interface is satisfied at compile time.

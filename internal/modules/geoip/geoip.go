@@ -3,6 +3,7 @@ package geoip
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -162,24 +163,30 @@ func (g *GeoIP) updateRanges() {
 	}
 	for _, cc := range countries {
 		lower := strings.ToLower(cc)
+		zone4 := infra.GeoIPDir + "/" + lower + ".zone"
+		zone6 := infra.GeoIPDir + "/" + lower + ".zone6"
+
 		fmt.Printf("  [%s] descargando IPv4...\n", cc)
-		if err := downloadZone(
-			"https://www.ipdeny.com/ipblocks/data/countries/"+lower+".zone",
-			infra.GeoIPDir+"/"+lower+".zone",
-		); err != nil {
-			fmt.Printf("  [%s] IPv4 ERROR: %v\n", cc, err)
+		if err := downloadZone("https://www.ipdeny.com/ipblocks/data/countries/"+lower+".zone", zone4); err != nil {
+			if _, existErr := os.Stat(zone4); existErr == nil {
+				fmt.Printf("  [%s] IPv4 ⚠ %v — usando datos previos\n", cc, err)
+			} else {
+				fmt.Printf("  [%s] IPv4 ERROR: %v\n", cc, err)
+			}
 		} else {
-			lines, _ := infra.ReadLines(infra.GeoIPDir + "/" + lower + ".zone")
+			lines, _ := infra.ReadLines(zone4)
 			fmt.Printf("  [%s] IPv4 OK (%d rangos)\n", cc, len(lines))
 		}
+
 		fmt.Printf("  [%s] descargando IPv6...\n", cc)
-		if err := downloadZone(
-			"https://www.ipdeny.com/ipv6/ipaddresses/blocks/"+lower+".zone",
-			infra.GeoIPDir+"/"+lower+".zone6",
-		); err != nil {
-			fmt.Printf("  [%s] IPv6 ERROR: %v\n", cc, err)
+		if err := downloadZone("https://www.ipdeny.com/ipv6/ipaddresses/blocks/"+lower+".zone", zone6); err != nil {
+			if _, existErr := os.Stat(zone6); existErr == nil {
+				fmt.Printf("  [%s] IPv6 ⚠ %v — usando datos previos\n", cc, err)
+			} else {
+				fmt.Printf("  [%s] IPv6 ERROR: %v\n", cc, err)
+			}
 		} else {
-			lines, _ := infra.ReadLines(infra.GeoIPDir + "/" + lower + ".zone6")
+			lines, _ := infra.ReadLines(zone6)
 			fmt.Printf("  [%s] IPv6 OK (%d rangos)\n", cc, len(lines))
 		}
 	}
@@ -294,13 +301,35 @@ func saveCountries(countries []string) error {
 }
 
 func downloadZone(url, dest string) error {
+	tmp := dest + ".tmp"
+	defer os.Remove(tmp)
+
 	out, err := exec.Command(
-		"curl", "-fsSL", "--retry", "2", "--max-time", "30", "-o", dest, url,
+		"curl", "-fsSL", "--retry", "2", "--max-time", "30", "-o", tmp, url,
 	).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("curl: %s", strings.TrimSpace(string(out)))
 	}
-	return nil
+	if err := validateZoneFile(tmp); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dest)
+}
+
+func validateZoneFile(path string) error {
+	lines, err := infra.ReadLines(path)
+	if err != nil {
+		return fmt.Errorf("no se pudo leer el archivo descargado: %w", err)
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("descarga vacía (0 entradas)")
+	}
+	for _, line := range lines {
+		if _, _, err := net.ParseCIDR(line); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("descarga sin CIDRs válidos (%d líneas)", len(lines))
 }
 
 func zoneStatus(path string) string {
