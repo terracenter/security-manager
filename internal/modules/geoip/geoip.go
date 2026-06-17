@@ -11,7 +11,7 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
 )
 
-// GeoIP gestiona el bloqueo de tráfico por país usando sets nftables (geoip_<cc>4/6).
+// GeoIP gestiona el acceso por país (ALLOWLIST) usando sets nftables nativos (sm_geoallow4/6).
 // Fuente de rangos: ipdeny.com (zone files, un CIDR por línea).
 type GeoIP struct {
 	scanner *bufio.Scanner
@@ -22,19 +22,25 @@ func New() *GeoIP {
 }
 
 func (g *GeoIP) Order() int   { return 3 }
-func (g *GeoIP) Name() string { return "GeoIP — bloqueo por país" }
+func (g *GeoIP) Name() string { return "GeoIP — países permitidos" }
 func (g *GeoIP) Reset()       {}
 
 func (g *GeoIP) Menu() {
+	if _, err := os.Stat(infra.ConfDir + "/blocked_countries.conf"); err == nil {
+		fmt.Println("\n  ⚠  AVISO: Se detectó blocked_countries.conf (formato GeoIP anterior — BLOCKLIST).")
+		fmt.Println("     El módulo GeoIP ahora opera en modo ALLOWLIST (allowed_countries.conf).")
+		fmt.Println("     Los países del archivo anterior eran BLOQUEADOS — contenido semánticamente opuesto.")
+		fmt.Println("     Configura los países PERMITIDOS desde cero con [1].")
+	}
 	for {
-		fmt.Println("\n  ┌─ GeoIP — Bloqueo por país ─────────────┐")
-		fmt.Println("  │  [1] Agregar país al bloqueo            │")
-		fmt.Println("  │  [2] Eliminar país del bloqueo          │")
-		fmt.Println("  │  [3] Ver países bloqueados              │")
-		fmt.Println("  │  [4] Actualizar rangos (ipdeny.com)     │")
-		fmt.Println("  │  [5] Aplicar / recargar ruleset         │")
-		fmt.Println("  │  [0] Volver                             │")
-		fmt.Println("  └────────────────────────────────────────┘")
+		fmt.Println("\n  ┌─ GeoIP — Países permitidos ─────────────┐")
+		fmt.Println("  │  [1] Agregar país a la lista             │")
+		fmt.Println("  │  [2] Eliminar país de la lista           │")
+		fmt.Println("  │  [3] Ver países permitidos               │")
+		fmt.Println("  │  [4] Actualizar rangos (ipdeny.com)      │")
+		fmt.Println("  │  [5] Aplicar / recargar ruleset          │")
+		fmt.Println("  │  [0] Volver                              │")
+		fmt.Println("  └─────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
 
 		if !g.scanner.Scan() {
@@ -60,7 +66,7 @@ func (g *GeoIP) Menu() {
 }
 
 func (g *GeoIP) addCountry() {
-	fmt.Print("\n  Código de país ISO 3166-1 alfa-2 (ej: CN, RU, KP): ")
+	fmt.Print("\n  Código de país ISO 3166-1 alfa-2 a PERMITIR (ej: VE, CO, US): ")
 	if !g.scanner.Scan() {
 		return
 	}
@@ -126,9 +132,11 @@ func (g *GeoIP) listCountries() {
 		return
 	}
 	if len(countries) == 0 {
-		fmt.Println("\n  Sin países configurados.")
+		fmt.Println("\n  Sin países en la lista de permitidos.")
+		fmt.Println("  Usa [1] para agregar países y [4]+[5] para descargar rangos y aplicar.")
 		return
 	}
+	fmt.Println("\n  Países PERMITIDOS (solo estos alcanzan SSH/443/ICMP):")
 	fmt.Println()
 	for _, cc := range countries {
 		lower := strings.ToLower(cc)
@@ -185,8 +193,17 @@ func (g *GeoIP) applyGeoIP() {
 		return
 	}
 	if len(geoip.Countries) == 0 {
-		fmt.Println("  Sin países con rangos descargados. Usa [4] para descargar primero.")
-		return
+		fmt.Println("\n  ⚠  AVISO: No hay países en la lista de permitidos.")
+		fmt.Println("     El ruleset se aplicará sin restricción geográfica (todo el tráfico pasa el stage 7).")
+		fmt.Println("     Usa [1] para agregar países y [4] para descargar sus rangos.")
+		fmt.Print("\n  ¿Continuar de todas formas? [s/N]: ")
+		if !g.scanner.Scan() {
+			return
+		}
+		if strings.ToLower(strings.TrimSpace(g.scanner.Text())) != "s" {
+			fmt.Println("  Cancelado.")
+			return
+		}
 	}
 	sshPort := infra.DetectSSHPort()
 	ruleset := infra.GenerateRuleset(sshPort, geoip)
@@ -247,7 +264,7 @@ func validCC(cc string) bool {
 }
 
 func loadCountries() ([]string, error) {
-	f, err := os.Open(infra.BlockedCountriesFile)
+	f, err := os.Open(infra.AllowedCountriesFile)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -268,12 +285,12 @@ func loadCountries() ([]string, error) {
 
 func saveCountries(countries []string) error {
 	var sb strings.Builder
-	sb.WriteString("# Países bloqueados — Security-Manager-NG GeoIP\n")
+	sb.WriteString("# Países PERMITIDOS — Security-Manager-NG GeoIP (ALLOWLIST)\n")
 	sb.WriteString("# Un código ISO 3166-1 alfa-2 por línea\n")
 	for _, cc := range countries {
 		sb.WriteString(cc + "\n")
 	}
-	return os.WriteFile(infra.BlockedCountriesFile, []byte(sb.String()), 0o640)
+	return os.WriteFile(infra.AllowedCountriesFile, []byte(sb.String()), 0o640)
 }
 
 func downloadZone(url, dest string) error {

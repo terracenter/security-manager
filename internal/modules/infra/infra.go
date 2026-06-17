@@ -29,7 +29,9 @@ const (
 
 	// GeoIP
 	GeoIPDir             = ConfDir + "/geoip"
-	BlockedCountriesFile = ConfDir + "/blocked_countries.conf"
+	AllowedCountriesFile = ConfDir + "/allowed_countries.conf"
+	SetGeoAllow4         = "sm_geoallow4"
+	SetGeoAllow6         = "sm_geoallow6"
 )
 
 // GeoIPData contiene los rangos por país a incrustar en el ruleset.
@@ -44,15 +46,15 @@ type CountrySet struct {
 	Ranges6 []string
 }
 
-// LoadGeoIPData lee blocked_countries.conf y los archivos zone de GeoIPDir.
+// LoadGeoIPData lee allowed_countries.conf y los archivos zone de GeoIPDir.
 // Retorna GeoIPData vacía si el archivo de config no existe.
 func LoadGeoIPData() (GeoIPData, error) {
-	f, err := os.Open(BlockedCountriesFile)
+	f, err := os.Open(AllowedCountriesFile)
 	if os.IsNotExist(err) {
 		return GeoIPData{}, nil
 	}
 	if err != nil {
-		return GeoIPData{}, fmt.Errorf("leer %s: %w", BlockedCountriesFile, err)
+		return GeoIPData{}, fmt.Errorf("leer %s: %w", AllowedCountriesFile, err)
 	}
 	defer f.Close()
 
@@ -173,11 +175,13 @@ table inet sm {
         ip  saddr @%s accept
         ip6 saddr @%s accept
 
-        # 7 · GeoIP
+        # 7 · GeoIP ALLOWLIST
+        # Excepción mundial: port 80 (Let's Encrypt HTTP-01 ACME challenge)
+        tcp dport 80 accept
 %s
         # 8 · Servicios permitidos
         tcp dport %d accept%s
-        tcp dport { 80, 443 } accept
+        tcp dport 443 accept
         icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
@@ -215,36 +219,36 @@ func formatSet(name, addrType, comment string, elements []string) string {
 
 func geoipSetsBlock(geoip GeoIPData) string {
 	if len(geoip.Countries) == 0 {
-		return "    # (sin países bloqueados)\n"
+		return fmt.Sprintf(
+			"\n    set %s {\n        type ipv4_addr\n        flags interval\n        comment \"GeoIP — países permitidos (vacío)\"\n    }\n"+
+				"\n    set %s {\n        type ipv6_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv6 (vacío)\"\n    }\n",
+			SetGeoAllow4, SetGeoAllow6)
 	}
-	var sb strings.Builder
+	var all4, all6 []string
 	for _, cs := range geoip.Countries {
-		lower := strings.ToLower(cs.CC)
-		if len(cs.Ranges4) > 0 {
-			sb.WriteString(fmt.Sprintf("\n    set geoip_%s4 {\n        type ipv4_addr\n        flags interval\n        comment \"GeoIP block %s IPv4\"\n        elements = { %s }\n    }\n",
-				lower, cs.CC, strings.Join(cs.Ranges4, ", ")))
-		}
-		if len(cs.Ranges6) > 0 {
-			sb.WriteString(fmt.Sprintf("\n    set geoip_%s6 {\n        type ipv6_addr\n        flags interval\n        comment \"GeoIP block %s IPv6\"\n        elements = { %s }\n    }\n",
-				lower, cs.CC, strings.Join(cs.Ranges6, ", ")))
-		}
+		all4 = append(all4, cs.Ranges4...)
+		all6 = append(all6, cs.Ranges6...)
 	}
-	return sb.String()
+	s4 := fmt.Sprintf("\n    set %s {\n        type ipv4_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv4\"\n", SetGeoAllow4)
+	if len(all4) > 0 {
+		s4 += fmt.Sprintf("        elements = { %s }\n", strings.Join(all4, ", "))
+	}
+	s4 += "    }\n"
+	s6 := fmt.Sprintf("\n    set %s {\n        type ipv6_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv6\"\n", SetGeoAllow6)
+	if len(all6) > 0 {
+		s6 += fmt.Sprintf("        elements = { %s }\n", strings.Join(all6, ", "))
+	}
+	s6 += "    }\n"
+	return s4 + s6
 }
 
 func geoipRulesBlock(geoip GeoIPData) string {
 	if len(geoip.Countries) == 0 {
-		return "        # (sin países bloqueados configurados)"
+		return "        # 7 · GeoIP ALLOWLIST — sin países configurados (todo el tráfico pasa)\n" +
+			"        # AVISO: Configura países permitidos con el módulo geoip [1]"
 	}
-	var sb strings.Builder
-	for _, cs := range geoip.Countries {
-		lower := strings.ToLower(cs.CC)
-		if len(cs.Ranges4) > 0 {
-			sb.WriteString(fmt.Sprintf("        ip  saddr @geoip_%s4 drop\n", lower))
-		}
-		if len(cs.Ranges6) > 0 {
-			sb.WriteString(fmt.Sprintf("        ip6 saddr @geoip_%s6 drop\n", lower))
-		}
-	}
-	return strings.TrimRight(sb.String(), "\n")
+	return fmt.Sprintf(
+		"        ip  saddr != @%s drop\n"+
+			"        ip6 saddr != @%s drop",
+		SetGeoAllow4, SetGeoAllow6)
 }
