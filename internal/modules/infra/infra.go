@@ -132,7 +132,8 @@ func GenerateRuleset(sshPort int, geoip GeoIPData) string {
 # Para recargar: nft -f %s
 # Para validar:  nft -c -f %s
 
-flush ruleset
+add table inet sm
+delete table inet sm
 
 table inet sm {
 
