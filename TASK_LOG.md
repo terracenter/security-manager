@@ -486,3 +486,27 @@ Registrado en `.agents/handoffs/security-manager-NG.md` como TASK-B4 (seguimient
 - Estado: ⏳ pendiente — Sonnet planificará tarea aparte tras cerrar TASK-FIX-B1B2
 
 **Próxima tarea:** TASK-012 — Deploy script e install.sh (ya validado por Opus, pendiente ejecución)
+
+---
+
+## TASK-B4 — Reemplazo flush ruleset → add+delete table inet sm
+
+| Campo | Valor |
+|-------|-------|
+| Fecha | 2026-06-16 |
+| Estado | ✅ COMPLETADA |
+| Commit | e5509cd |
+| Archivos | internal/modules/infra/infra.go |
+
+### Fases
+
+| # | Ítem | Status |
+|---|------|--------|
+| C-B4.1 | Edición infra.go: `flush ruleset` → `add table inet sm` + `delete table inet sm` | ✅ |
+| C-B4.2 | Validación sintaxis `nft -c -f` — `SINTAXIS_OK` | ✅ |
+| C-B4.3 | `grep "flush ruleset" internal/` → 0 matches | ✅ |
+| C-B4.4 | `go build ./...` + `go vet ./...` — sin errores | ✅ |
+| C-B4.5 | Coexistencia tabla dummy `inet test_dummy_b4` — `COEXISTENCIA_OK` | ✅ |
+| C-B4.6 | Commit e5509cd + TASK_LOG + vault | ✅ |
+
+**Próxima tarea:** TASK-012 — Deploy script e install.sh
