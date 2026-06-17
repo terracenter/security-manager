@@ -182,8 +182,15 @@ func parseOpenVPNServer(path string) (OVPNRule, bool) {
 			fmt.Sscanf(line[5:], "%d", &port)
 		}
 		if strings.HasPrefix(line, "proto ") {
+			// Normalizar a tcp/udp: OpenVPN admite udp6, tcp4, tcp-server, tcp4-server, etc.
+			// Sin esto, un "proto tcp-server" generaría una regla nftables inválida.
 			p := strings.ToLower(strings.TrimSpace(line[6:]))
-			proto = strings.TrimSuffix(p, "6") // "udp6" → "udp"
+			switch {
+			case strings.HasPrefix(p, "tcp"):
+				proto = "tcp"
+			case strings.HasPrefix(p, "udp"):
+				proto = "udp"
+			}
 		}
 	}
 	return OVPNRule{Port: port, Proto: proto}, true

@@ -99,6 +99,12 @@ func (h *HardRoot) hardenSSH() {
 	fmt.Println("\n  Configurará en sshd_config:")
 	fmt.Println("    PermitRootLogin no")
 	fmt.Println("    PermitEmptyPasswords no")
+	if users := sudoCapableUsers(); len(users) == 0 {
+		fmt.Println("\n  ⚠  ADVERTENCIA: no se detectó ningún usuario sudo/wheel distinto de root.")
+		fmt.Println("     Con PermitRootLogin no podrías perder el acceso SSH a este host.")
+	} else {
+		fmt.Printf("\n  Usuarios sudo/wheel con acceso alterno: %s\n", strings.Join(users, ", "))
+	}
 	fmt.Print("  ¿Confirmar? [s/N]: ")
 	if !h.scanner.Scan() {
 		return
@@ -118,6 +124,13 @@ func (h *HardRoot) hardenSSH() {
 	}
 	fmt.Println("  sshd_config actualizado.")
 
+	// Validar sintaxis antes de recargar — evita recargar con una config rota.
+	if out, err := exec.Command("sshd", "-t").CombinedOutput(); err != nil {
+		fmt.Printf("  ERROR: sshd -t falló tras los cambios:\n%s\n", strings.TrimSpace(string(out)))
+		fmt.Println("  Revisa /etc/ssh/sshd_config manualmente. No se recargó sshd.")
+		return
+	}
+
 	if err := reloadSSHD(); err != nil {
 		fmt.Printf("  ADVERTENCIA: no se pudo recargar sshd: %v\n", err)
 		fmt.Println("  Ejecuta manualmente: systemctl reload ssh")
@@ -133,6 +146,10 @@ func (h *HardRoot) lockRoot() {
 			fmt.Println("\n  La cuenta root ya está bloqueada. Sin cambios.")
 			return
 		}
+	}
+
+	if users := sudoCapableUsers(); len(users) == 0 {
+		fmt.Println("\n  ⚠  ADVERTENCIA: sin usuario sudo/wheel alterno — bloquear root puede dejarte sin escalada de privilegios.")
 	}
 
 	fmt.Print("\n  ¿Bloquear la cuenta root (passwd -l root)? [s/N]: ")
@@ -274,6 +291,31 @@ func reloadSSHD() error {
 		return fmt.Errorf("systemctl reload %s: %s", svc, strings.TrimSpace(string(out)))
 	}
 	return fmt.Errorf("no se encontró servicio ssh ni sshd")
+}
+
+// sudoCapableUsers retorna los usuarios (distintos de root) en los grupos sudo/wheel.
+// Se usa como preflight antes de PermitRootLogin no / lockRoot para advertir de lockout.
+func sudoCapableUsers() []string {
+	out, err := exec.Command("getent", "group", "sudo", "wheel").Output()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var users []string
+	for _, line := range strings.Split(string(out), "\n") {
+		parts := strings.Split(line, ":")
+		if len(parts) < 4 || parts[3] == "" {
+			continue
+		}
+		for _, u := range strings.Split(parts[3], ",") {
+			u = strings.TrimSpace(u)
+			if u != "" && u != "root" && !seen[u] {
+				seen[u] = true
+				users = append(users, u)
+			}
+		}
+	}
+	return users
 }
 
 func orUnset(s string) string {
