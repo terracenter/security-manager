@@ -13,9 +13,7 @@ import (
 
 // D1 — Constantes SSoT
 const (
-	f2bDBPath    = "/var/lib/fail2ban/fail2ban.sqlite3"
-	ipinfoURL    = "https://ipinfo.io/%s"
-	ipinfoURLTok = "https://ipinfo.io/%s?token=%s"
+	ipinfoURL = "https://ipinfo.io/%s"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
@@ -176,8 +174,7 @@ func (f *Fail2ban) listBanned(jail string) {
 		}
 
 		if end < len(ips) {
-			f.readLine("\n  Enter=más IPs | q=salir: ")
-			if strings.HasPrefix(f.readLine(""), "q") {
+			if strings.HasPrefix(f.readLine("\n  Enter=más IPs | q=salir: "), "q") {
 				return
 			}
 		}
