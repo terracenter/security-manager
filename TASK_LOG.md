@@ -552,3 +552,92 @@ Registrado en `.agents/handoffs/security-manager-NG.md` como TASK-B4 (seguimient
 **Hash de commit:** efe8cff
 
 **Próxima tarea:** TASK-013 — Prueba piloto en host Debian (iDRAC de respaldo)
+
+---
+
+## [TASK-GEOIP-REDESIGN] GeoIP BLOCKLIST → ALLOWLIST
+
+**Inicio:** 2026-06-17
+**Agente:** Claude Code (Sonnet planificó + Opus validó; Haiku ejecutó C1–C12; Sonnet auditó)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-17 | Sonnet diseñó C1–C12 |
+| desarrollo | ✅ completo | 2026-06-17  | Haiku ejecutó C1–C12 |
+| build      | ✅ completo | 2026-06-17  | `go build ./...` OK |
+| auditoría  | ✅ completo | 2026-06-17  | Sonnet detectó bug C19 (orden args Sprintf) → corregido en 13f5f08 |
+| commit     | ✅ completo | 2026-06-17  | Commit 7338ad4 (Haiku) + 13f5f08 fix (Sonnet) |
+| cerrado    | ✅          | 2026-06-17  | Rediseño ALLOWLIST operativo |
+
+**Archivos modificados:**
+
+| Archivo | Descripción |
+|---------|-------------|
+| `internal/modules/infra/infra.go` | Constantes AllowedCountriesFile/SetGeoAllow4/6; geoipSetsBlock/geoipRulesBlock con lógica ALLOWLIST; port 80 → stage 7a |
+| `internal/modules/geoip/geoip.go` | Textos ALLOWLIST, aviso blocked_countries.conf, confirmación fail-open |
+
+**Checklist C1–C12:**
+
+| # | Ítem | Status |
+|---|------|--------|
+| C1 | Constantes AllowedCountriesFile + SetGeoAllow4/6 en infra.go | ✅ |
+| C2 | geoipSetsBlock() — sets unificados por familia | ✅ |
+| C3 | geoipRulesBlock() — lógica invertida (saddr != @set drop) | ✅ |
+| C4 | GenerateRuleset() — tcp 80 → stage 7a; stage 8 solo 443 | ✅ |
+| C5 | geoip.go — comment + Name() → ALLOWLIST | ✅ |
+| C6 | Menu() — aviso si blocked_countries.conf detectado | ✅ |
+| C7 | addCountry() — prompt PERMITIR | ✅ |
+| C8 | loadCountries()/saveCountries() → AllowedCountriesFile | ✅ |
+| C9 | listCountries() — mensaje sin países | ✅ |
+| C10 | applyGeoIP() — confirmación interactiva fail-open | ✅ |
+| C11 | `go build ./...` sin errores | ✅ |
+| C12 | Commit 7338ad4 | ✅ |
+
+**Bug detectado en auditoría Sonnet (post-Haiku):**
+
+Orden de args en `fmt.Sprintf` de `GenerateRuleset()` desalineado: `tailscaleRule`
+estaba en posición 12 pero el template lo consume en posición 8 (`iif lo accept%s`).
+Resultado: `iif lo acceptsm_blacklist4` + sets stages 5/6 mezclados.
+**Fix:** commit 13f5f08 — `tailscaleRule` movido antes de SetBlacklist4/6.
+
+---
+
+## [TASK-VPN-DETECT] Auto-detección VPN en GenerateRuleset
+
+**Inicio:** 2026-06-17
+**Agente:** Claude Code (Sonnet planificó; Haiku ejecutó C13–C21; Sonnet auditó + fix)
+**Branch:** `dev`
+
+| Fase       | Estado      | Timestamp   | Notas |
+|------------|-------------|-------------|-------|
+| planificación | ✅ completo | 2026-06-17 | Sonnet diseñó C13–C21 |
+| desarrollo | ✅ completo | 2026-06-17  | Haiku ejecutó C13–C21 |
+| build      | ✅ completo | 2026-06-17  | `go build ./...` OK |
+| auditoría  | ✅ completo | 2026-06-17  | Fix integrado en 13f5f08 (compartido con GEOIP-REDESIGN) |
+| commit     | ✅ completo | 2026-06-17  | Commit 9abdce4 (Haiku) |
+| cerrado    | ✅          | 2026-06-17  | VPN auto-detect operativo post fix 13f5f08 |
+
+**Archivos modificados:**
+
+| Archivo | Descripción |
+|---------|-------------|
+| `internal/modules/infra/infra.go` | Structs GlobalServices+OVPNRule; DetectGlobalServices(); globalExceptionsBlock(); integración en GenerateRuleset() stages 2 y 7a |
+
+**Checklist C13–C21:**
+
+| # | Ítem | Status |
+|---|------|--------|
+| C13 | Structs GlobalServices + OVPNRule | ✅ |
+| C14 | import "path/filepath" | ✅ |
+| C15 | parseWireGuardPort() | ✅ |
+| C16 | matchLine() | ✅ |
+| C17 | parseOpenVPNServer() | ✅ |
+| C18 | DetectGlobalServices() — WireGuard/OpenVPN/Tailscale cross-distro | ✅ |
+| C19 | globalExceptionsBlock() + integración GenerateRuleset() | ✅ (bug orden fix 13f5f08) |
+| C20 | `go build ./...` sin errores | ✅ |
+| C21 | Commit 9abdce4 | ✅ |
+
+**Hash de commits:** 7338ad4 (GeoIP) · 9abdce4 (VPN) · 13f5f08 (fix orden Sonnet)
+
+**Próxima tarea:** TASK-013 — Prueba piloto en host Debian (iDRAC de respaldo)
