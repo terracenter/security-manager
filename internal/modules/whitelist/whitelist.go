@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/sys"
@@ -21,19 +22,45 @@ func New() *Whitelist {
 }
 
 func (w *Whitelist) Order() int   { return 2 }
-func (w *Whitelist) Name() string { return "Whitelist / SSoT" }
+func (w *Whitelist) Name() string { return "Whitelist / SSoT (Confiables / Intocables)" }
 func (w *Whitelist) Reset()       {}
+
+// tier parametriza cada nivel de confianza para reusar add/list/delete.
+type tier struct {
+	label  string
+	set4   string
+	set6   string
+	file4  string
+	file6  string
+	immune bool // Tier B → se sincroniza a fail2ban ignoreip
+}
+
+func tierA() tier {
+	return tier{
+		label:  "Confiables (Tier A — vigiladas por fail2ban)",
+		set4:   infra.SetWhitelist4, set6: infra.SetWhitelist6,
+		file4: infra.Whitelist4File, file6: infra.Whitelist6File,
+		immune: false,
+	}
+}
+
+func tierB() tier {
+	return tier{
+		label:  "Intocables (Tier B — fail2ban ignoreip)",
+		set4:   infra.SetImmune4, set6: infra.SetImmune6,
+		file4: infra.Immune4File, file6: infra.Immune6File,
+		immune: true,
+	}
+}
 
 func (w *Whitelist) Menu() {
 	for {
-		fmt.Println("\n  ┌─ Whitelist / SSoT ─────────────────────┐")
-		fmt.Println("  │  [1] Agregar IP/CIDR                    │")
-		fmt.Println("  │  [2] Agregar mi IP (sesión SSH activa)  │")
-		fmt.Println("  │  [3] Listar whitelist actual            │")
-		fmt.Println("  │  [4] Eliminar IP/CIDR                   │")
-		fmt.Println("  │  [5] Sincronizar con fail2ban           │")
-		fmt.Println("  │  [0] Volver                             │")
-		fmt.Println("  └────────────────────────────────────────┘")
+		fmt.Println("\n  ┌─ Whitelist / SSoT ─────────────────────────────┐")
+		fmt.Println("  │  [1] Confiables (Tier A) — fail2ban SÍ vigila   │")
+		fmt.Println("  │  [2] Intocables (Tier B) — fail2ban JAMÁS banea │")
+		fmt.Println("  │  [3] Sincronizar fail2ban (Tier B → ignoreip)   │")
+		fmt.Println("  │  [0] Volver                                     │")
+		fmt.Println("  └─────────────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
 
 		if !w.scanner.Scan() {
@@ -41,14 +68,10 @@ func (w *Whitelist) Menu() {
 		}
 		switch strings.TrimSpace(w.scanner.Text()) {
 		case "1":
-			w.addIP()
+			w.tierMenu(tierA())
 		case "2":
-			w.addSelf()
+			w.tierMenu(tierB())
 		case "3":
-			w.listIPs()
-		case "4":
-			w.deleteIP()
-		case "5":
 			syncFail2banIgnoreip()
 		case "0":
 			return
@@ -58,131 +81,208 @@ func (w *Whitelist) Menu() {
 	}
 }
 
-func (w *Whitelist) addIP() {
-	fmt.Print("\n  IP o CIDR a agregar (ej: 192.168.1.0/24 o 2001:db8::1): ")
-	if !w.scanner.Scan() {
-		return
+func (w *Whitelist) tierMenu(t tier) {
+	for {
+		fmt.Printf("\n  ┌─ %s\n", t.label)
+		fmt.Println("  │  [1] Agregar IP/CIDR")
+		fmt.Println("  │  [2] Agregar mi IP (sesión SSH activa)")
+		fmt.Println("  │  [3] Listar")
+		fmt.Println("  │  [4] Eliminar")
+		fmt.Println("  │  [0] Volver")
+		fmt.Print("  Selección: ")
+
+		if !w.scanner.Scan() {
+			return
+		}
+		switch strings.TrimSpace(w.scanner.Text()) {
+		case "1":
+			w.addIP(t)
+		case "2":
+			w.addSelf(t)
+		case "3":
+			w.listIPs(t)
+		case "4":
+			w.deleteIP(t)
+		case "0":
+			return
+		default:
+			fmt.Println("  Opción inválida.")
+		}
 	}
-	entry := strings.TrimSpace(w.scanner.Text())
+}
+
+// prompt lee una línea de entrada con un mensaje.
+func (w *Whitelist) prompt(msg string) string {
+	fmt.Print(msg)
+	if !w.scanner.Scan() {
+		return ""
+	}
+	return strings.TrimSpace(w.scanner.Text())
+}
+
+// promptMetadata captura los metadatos de auditoría de la entrada.
+func (w *Whitelist) promptMetadata() (responsable, proposito, vencimiento string) {
+	responsable = w.prompt("  Responsable: ")
+	proposito = w.prompt("  Propósito: ")
+	vencimiento = w.prompt("  Vencimiento (YYYY-MM-DD, vacío = permanente): ")
+	return
+}
+
+func (w *Whitelist) addIP(t tier) {
+	entry := w.prompt("\n  IP o CIDR a agregar (ej: 192.168.1.0/24 o 2001:db8::1): ")
 	if entry == "" {
 		fmt.Println("  Entrada vacía. Cancelado.")
 		return
 	}
-	setName, confFile, err := resolveSet(entry)
-	if err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
-		return
-	}
-	if err := nftAddElement(setName, entry); err != nil {
-		fmt.Printf("  ERROR al agregar: %v\n", err)
-		return
-	}
-	if err := appendToFile(confFile, entry); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
-	}
-	fmt.Printf("  Agregado %s → %s\n", entry, setName)
-	syncFail2banIgnoreip()
+	w.persist(t, entry)
 }
 
-func (w *Whitelist) addSelf() {
+func (w *Whitelist) addSelf(t tier) {
 	ip := sys.GetSSHIP()
 	if ip == "" {
 		fmt.Println("\n  No se detectó sesión SSH activa (SSH_CLIENT vacío y 'w' sin resultados).")
 		fmt.Println("  Usa [1] para agregar tu IP manualmente.")
 		return
 	}
-	setName, confFile, err := resolveSet(ip)
+	entry := ip
+	// Sugerir CIDR de red si es una IPv4 individual.
+	if cidr := suggestCIDR(ip); cidr != "" {
+		fmt.Printf("\n  IP detectada: %s\n", ip)
+		fmt.Printf("  [1] Solo esta IP (%s/32)\n", ip)
+		fmt.Printf("  [2] Toda la red (%s)\n", cidr)
+		switch w.prompt("  Selección [1]: ") {
+		case "2":
+			entry = cidr
+		default:
+			// dejar la IP individual tal cual
+		}
+	} else {
+		fmt.Printf("\n  IP detectada: %s\n", ip)
+	}
+	w.persist(t, entry)
+}
+
+// persist valida la entrada, captura metadatos, la agrega al set nft y al archivo,
+// y sincroniza fail2ban si el tier es intocable.
+func (w *Whitelist) persist(t tier, addr string) {
+	setName, confFile, err := t.resolve(addr)
 	if err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return
 	}
-	fmt.Printf("\n  IP detectada: %s → %s\n", ip, setName)
-	fmt.Print("  ¿Confirmar agregar al whitelist? [s/N]: ")
-	if !w.scanner.Scan() {
+	resp, prop, venc := w.promptMetadata()
+	e := infra.ACLEntry{
+		Addr:        addr,
+		Responsable: resp,
+		Proposito:   prop,
+		FechaAlta:   time.Now().Format("2006-01-02"),
+		Vencimiento: venc,
+	}
+	if err := nftAddElement(setName, addr); err != nil {
+		fmt.Printf("  ERROR al agregar al set nft: %v\n", err)
+		fmt.Println("  (¿Aplicaste el ruleset base con el set actualizado? Firewall [1])")
 		return
 	}
-	if strings.ToLower(strings.TrimSpace(w.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
-		return
-	}
-	if err := nftAddElement(setName, ip); err != nil {
-		fmt.Printf("  ERROR al agregar: %v\n", err)
-		return
-	}
-	if err := appendToFile(confFile, ip); err != nil {
+	if err := appendEntry(confFile, e); err != nil {
 		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Agregado %s → %s\n", ip, setName)
-	syncFail2banIgnoreip()
+	fmt.Printf("  Agregado %s → %s\n", addr, setName)
+	if t.immune {
+		syncFail2banIgnoreip()
+	}
 }
 
-func (w *Whitelist) listIPs() {
-	fmt.Println()
-	for _, setName := range []string{infra.SetWhitelist4, infra.SetWhitelist6} {
-		out, err := exec.Command("nft", "list", "set", "inet", "sm", setName).CombinedOutput()
-		if err != nil {
-			fmt.Printf("  [%s] No disponible (¿tabla inet sm cargada?): %s\n",
-				setName, strings.TrimSpace(string(out)))
-			continue
+func (w *Whitelist) listIPs(t tier) {
+	fmt.Printf("\n  %s\n", t.label)
+	total := 0
+	for _, f := range []string{t.file4, t.file6} {
+		entries, _ := infra.ReadACLEntries(f)
+		for _, e := range entries {
+			if total == 0 {
+				fmt.Printf("\n  %-22s %-18s %-24s %-12s %s\n",
+					"IP/CIDR", "Responsable", "Propósito", "Alta", "Vence")
+				fmt.Println("  " + strings.Repeat("─", 88))
+			}
+			venc := e.Vencimiento
+			if venc == "" {
+				venc = "permanente"
+			}
+			fmt.Printf("  %-22s %-18s %-24s %-12s %s\n",
+				e.Addr, e.Responsable, e.Proposito, e.FechaAlta, venc)
+			total++
 		}
-		fmt.Printf("--- %s ---\n%s\n", setName, strings.TrimSpace(string(out)))
+	}
+	if total == 0 {
+		fmt.Println("\n  Sin entradas.")
 	}
 }
 
-func (w *Whitelist) deleteIP() {
-	fmt.Print("\n  IP o CIDR a eliminar: ")
-	if !w.scanner.Scan() {
-		return
-	}
-	entry := strings.TrimSpace(w.scanner.Text())
-	if entry == "" {
+func (w *Whitelist) deleteIP(t tier) {
+	addr := w.prompt("\n  IP o CIDR a eliminar: ")
+	if addr == "" {
 		fmt.Println("  Entrada vacía. Cancelado.")
 		return
 	}
-	setName, confFile, err := resolveSet(entry)
+	setName, confFile, err := t.resolve(addr)
 	if err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return
 	}
-	fmt.Printf("  Eliminar %s de %s. ¿Confirmar? [s/N]: ", entry, setName)
-	if !w.scanner.Scan() {
-		return
-	}
-	if strings.ToLower(strings.TrimSpace(w.scanner.Text())) != "s" {
+	if strings.ToLower(w.prompt(fmt.Sprintf("  Eliminar %s de %s. ¿Confirmar? [s/N]: ", addr, setName))) != "s" {
 		fmt.Println("  Cancelado.")
 		return
 	}
-	if err := nftDeleteElement(setName, entry); err != nil {
-		fmt.Printf("  ERROR al eliminar: %v\n", err)
+	if err := nftDeleteElement(setName, addr); err != nil {
+		fmt.Printf("  ERROR al eliminar del set nft: %v\n", err)
 		return
 	}
-	if err := removeFromFile(confFile, entry); err != nil {
+	if err := removeByAddr(confFile, addr); err != nil {
 		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Eliminado %s de %s\n", entry, setName)
-	syncFail2banIgnoreip()
+	fmt.Printf("  Eliminado %s de %s\n", addr, setName)
+	if t.immune {
+		syncFail2banIgnoreip()
+	}
 }
 
-// resolveSet clasifica entry como IPv4 o IPv6 y retorna el set nftables y el archivo de config.
-func resolveSet(entry string) (setName, confFile string, err error) {
-	if strings.Contains(entry, "/") {
-		ip, _, parseErr := net.ParseCIDR(entry)
+// resolve clasifica addr como IPv4 o IPv6 y retorna el set nftables y el archivo del tier.
+func (t tier) resolve(addr string) (setName, confFile string, err error) {
+	v4, err := isV4(addr)
+	if err != nil {
+		return "", "", err
+	}
+	if v4 {
+		return t.set4, t.file4, nil
+	}
+	return t.set6, t.file6, nil
+}
+
+// isV4 valida addr (IP o CIDR) y reporta si es IPv4.
+func isV4(addr string) (bool, error) {
+	if strings.Contains(addr, "/") {
+		ip, _, parseErr := net.ParseCIDR(addr)
 		if parseErr != nil {
-			return "", "", fmt.Errorf("CIDR inválido %q: %w", entry, parseErr)
+			return false, fmt.Errorf("CIDR inválido %q: %w", addr, parseErr)
 		}
-		if ip.To4() != nil {
-			return infra.SetWhitelist4, infra.Whitelist4File, nil
-		}
-		return infra.SetWhitelist6, infra.Whitelist6File, nil
+		return ip.To4() != nil, nil
 	}
-	ip := net.ParseIP(entry)
+	ip := net.ParseIP(addr)
 	if ip == nil {
-		return "", "", fmt.Errorf("dirección IP inválida: %q", entry)
+		return false, fmt.Errorf("dirección IP inválida: %q", addr)
 	}
-	if ip.To4() != nil {
-		return infra.SetWhitelist4, infra.Whitelist4File, nil
+	return ip.To4() != nil, nil
+}
+
+// suggestCIDR devuelve la red /24 de una IPv4 individual, o "" si no aplica.
+func suggestCIDR(ip string) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return ""
 	}
-	return infra.SetWhitelist6, infra.Whitelist6File, nil
+	if v4 := parsed.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.%d.0/24", v4[0], v4[1], v4[2])
+	}
+	return ""
 }
 
 func nftAddElement(setName, entry string) error {
@@ -207,11 +307,11 @@ func nftDeleteElement(setName, entry string) error {
 	return nil
 }
 
-// appendToFile agrega entry al archivo de config si no existe ya.
-func appendToFile(path, entry string) error {
-	existing, _ := infra.ReadLines(path)
-	for _, line := range existing {
-		if line == entry {
+// appendEntry agrega la entrada (con metadatos) si su dirección no existe ya.
+func appendEntry(path string, e infra.ACLEntry) error {
+	existing, _ := infra.ReadACLEntries(path)
+	for _, ex := range existing {
+		if ex.Addr == e.Addr {
 			return nil
 		}
 	}
@@ -220,47 +320,59 @@ func appendToFile(path, entry string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = fmt.Fprintln(f, entry)
+	_, err = fmt.Fprintln(f, e.String())
 	return err
 }
 
-// removeFromFile elimina entry del archivo de config.
-func removeFromFile(path, entry string) error {
-	lines, err := infra.ReadLines(path)
+// removeByAddr elimina del archivo la entrada cuya dirección coincide.
+func removeByAddr(path, addr string) error {
+	entries, err := infra.ReadACLEntries(path)
 	if err != nil {
 		return err
 	}
 	var updated []string
-	for _, l := range lines {
-		if l != entry {
-			updated = append(updated, l)
+	for _, e := range entries {
+		if e.Addr != addr {
+			updated = append(updated, e.String())
 		}
+	}
+	if len(updated) == 0 {
+		return os.WriteFile(path, []byte(""), 0o640)
 	}
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
 
 const fail2banIgnoreipFile = "/etc/fail2ban/jail.d/sm-ng-whitelist.conf"
 
-// syncFail2banIgnoreip escribe las IPs del whitelist en fail2ban jail.d y recarga.
-// Se llama automáticamente al agregar/eliminar entradas. Fallo no es fatal.
+// syncFail2banIgnoreip escribe SOLO las IPs intocables (Tier B) en fail2ban ignoreip
+// y recarga. El Tier A (confiables/vigiladas) NO va a ignoreip — fail2ban puede banearlas.
+// Fallo no es fatal.
 func syncFail2banIgnoreip() {
-	wl4, _ := infra.ReadLines(infra.Whitelist4File)
-	wl6, _ := infra.ReadLines(infra.Whitelist6File)
-	all := append(wl4, wl6...)
+	im4 := infra.ACLAddresses(mustEntries(infra.Immune4File))
+	im6 := infra.ACLAddresses(mustEntries(infra.Immune6File))
+	all := append(im4, im6...)
 
 	if len(all) == 0 {
 		os.Remove(fail2banIgnoreipFile)
 		exec.Command("fail2ban-client", "reload").Run()
+		fmt.Println("  ✓  fail2ban ignoreip vaciado (sin intocables Tier B).")
 		return
 	}
 
-	content := fmt.Sprintf("[DEFAULT]\nignoreip = %s\n", strings.Join(all, " "))
+	content := fmt.Sprintf(
+		"# Generado por Security-Manager-NG — Intocables (Tier B). NO editar manualmente.\n"+
+			"[DEFAULT]\nignoreip = %s\n", strings.Join(all, " "))
 	if err := os.WriteFile(fail2banIgnoreipFile, []byte(content), 0o640); err != nil {
 		fmt.Printf("  ⚠  fail2ban ignoreip: no se pudo escribir %s: %v\n", fail2banIgnoreipFile, err)
 		return
 	}
 	exec.Command("fail2ban-client", "reload").Run()
-	fmt.Println("  ✓  fail2ban ignoreip sincronizado.")
+	fmt.Printf("  ✓  fail2ban ignoreip sincronizado (%d intocables Tier B).\n", len(all))
+}
+
+func mustEntries(path string) []infra.ACLEntry {
+	e, _ := infra.ReadACLEntries(path)
+	return e
 }
 
 // _ ensures the interface is satisfied at compile time.

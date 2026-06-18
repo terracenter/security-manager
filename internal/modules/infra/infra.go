@@ -14,17 +14,24 @@ const (
 	RulesetFile = ConfDir + "/sm.nft"
 	BackupFile  = ConfDir + "/sm.nft.bak"
 
-	// Sets nftables — whitelist / blacklist
+	// Sets nftables — whitelist (Tier A) / immune (Tier B) / blacklist
 	SetWhitelist4 = "sm_whitelist4"
 	SetWhitelist6 = "sm_whitelist6"
+	SetImmune4    = "sm_immune4"
+	SetImmune6    = "sm_immune6"
 	SetBlacklist4 = "sm_blacklist4"
 	SetBlacklist6 = "sm_blacklist6"
 
 	Table = "inet sm"
 
-	// Config persistente de whitelist y blacklist (un CIDR/IP por línea)
+	// Config persistente. whitelist/immune usan formato con metadatos (ver ReadACLEntries);
+	// blacklist sigue siendo un CIDR/IP por línea.
+	// Tier A (Confiables/vigiladas): pasan el firewall, fail2ban SÍ puede banearlas.
 	Whitelist4File = ConfDir + "/whitelist4.conf"
 	Whitelist6File = ConfDir + "/whitelist6.conf"
+	// Tier B (Intocables): pasan el firewall y van a fail2ban ignoreip (jamás baneadas).
+	Immune4File    = ConfDir + "/immune4.conf"
+	Immune6File    = ConfDir + "/immune6.conf"
 	Blacklist4File = ConfDir + "/blacklist4.conf"
 	Blacklist6File = ConfDir + "/blacklist6.conf"
 
@@ -106,6 +113,76 @@ func ReadLines(path string) ([]string, error) {
 		}
 	}
 	return lines, sc.Err()
+}
+
+// ACLEntry es una entrada de whitelist/immune con metadatos de auditoría.
+// Formato persistido (pipe-delimited, una entrada por línea):
+//
+//	IP/CIDR | responsable | propósito | fecha_alta | vencimiento(opcional)
+//
+// Una línea sin pipes (solo la dirección) se acepta por compatibilidad.
+type ACLEntry struct {
+	Addr        string // CIDR o IP — único campo obligatorio
+	Responsable string
+	Proposito   string
+	FechaAlta   string
+	Vencimiento string // vacío = permanente
+}
+
+// String serializa la entrada al formato pipe-delimited persistido.
+func (e ACLEntry) String() string {
+	return fmt.Sprintf("%s | %s | %s | %s | %s",
+		e.Addr, e.Responsable, e.Proposito, e.FechaAlta, e.Vencimiento)
+}
+
+// ReadACLEntries lee un archivo de whitelist/immune con metadatos.
+// Tolera líneas planas (solo dirección) para compatibilidad con configs previos.
+func ReadACLEntries(path string) ([]ACLEntry, error) {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var entries []ACLEntry
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "|")
+		e := ACLEntry{Addr: strings.TrimSpace(fields[0])}
+		if e.Addr == "" {
+			continue
+		}
+		if len(fields) > 1 {
+			e.Responsable = strings.TrimSpace(fields[1])
+		}
+		if len(fields) > 2 {
+			e.Proposito = strings.TrimSpace(fields[2])
+		}
+		if len(fields) > 3 {
+			e.FechaAlta = strings.TrimSpace(fields[3])
+		}
+		if len(fields) > 4 {
+			e.Vencimiento = strings.TrimSpace(fields[4])
+		}
+		entries = append(entries, e)
+	}
+	return entries, sc.Err()
+}
+
+// ACLAddresses extrae solo las direcciones (CIDR/IP) de una lista de entradas,
+// para incrustarlas en los sets nftables.
+func ACLAddresses(entries []ACLEntry) []string {
+	addrs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		addrs = append(addrs, e.Addr)
+	}
+	return addrs
 }
 
 // DetectSSHPort lee /etc/ssh/sshd_config y retorna el puerto SSH (default 22).
@@ -244,7 +321,7 @@ func DetectGlobalServices() GlobalServices {
 // globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN.
 func globalExceptionsBlock(svc GlobalServices) string {
 	var sb strings.Builder
-	sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01\n")
+	sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01 (global — ACME valida desde cualquier país)\n")
 	for _, port := range svc.WireGuardPorts {
 		sb.WriteString(fmt.Sprintf("        udp dport %d accept   # WireGuard (auto-detectado)\n", port))
 	}
@@ -269,8 +346,14 @@ func GenerateRuleset(sshPort int, geoip GeoIPData) string {
 		tailscaleRule = "\n        iif \"tailscale0\" accept   # Tailscale (red de gestión — auto-detectado)"
 	}
 
-	wl4, _ := ReadLines(Whitelist4File)
-	wl6, _ := ReadLines(Whitelist6File)
+	wlEntries4, _ := ReadACLEntries(Whitelist4File)
+	wlEntries6, _ := ReadACLEntries(Whitelist6File)
+	imEntries4, _ := ReadACLEntries(Immune4File)
+	imEntries6, _ := ReadACLEntries(Immune6File)
+	wl4 := ACLAddresses(wlEntries4)
+	wl6 := ACLAddresses(wlEntries6)
+	im4 := ACLAddresses(imEntries4)
+	im6 := ACLAddresses(imEntries6)
 	bl4, _ := ReadLines(Blacklist4File)
 	bl6, _ := ReadLines(Blacklist6File)
 
@@ -287,8 +370,8 @@ delete table inet sm
 
 table inet sm {
 
-    # ── Sets whitelist / blacklist ────────────────────────────────────
-%s%s%s%s
+    # ── Sets confiables (Tier A) / intocables (Tier B) / blacklist ────
+%s%s%s%s%s%s
     # ── Sets GeoIP (por país) ────────────────────────────────────────
 %s
     # ── Chain principal ──────────────────────────────────────────────
@@ -319,16 +402,25 @@ table inet sm {
         ip  saddr @%s drop
         ip6 saddr @%s drop
 
-        # 6 · Whitelist / SSoT — bypass total
+        # 6 · Confiables (Tier A) + Intocables (Tier B) — bypass de GeoIP/puertos
+        #     Tier A: fail2ban SÍ puede banearlas (no van a ignoreip).
+        #     Tier B: fail2ban JAMÁS las banea (sincronizadas a ignoreip).
+        #     La distinción Tier A/B vive en fail2ban, no en este accept.
+        ip  saddr @%s accept
+        ip6 saddr @%s accept
         ip  saddr @%s accept
         ip6 saddr @%s accept
 
         # 7 · GeoIP ALLOWLIST + excepciones mundiales (VPN auto-detectada)
 %s
 %s
-        # 8 · Servicios permitidos
+        # 8 · Servicios permitidos — country-restricted POR DISEÑO.
+        #     Solo IPs de países permitidos (stage 7) alcanzan estos puertos.
+        #     Para acceso GLOBAL a SSH/443 (LAN, IP fija, proveedor), agregar la IP
+        #     a Confiables/Intocables (stage 6) — NO abrir estos puertos al mundo.
+        #     (El puerto 80 está en stage 7a, global, solo para Let's Encrypt HTTP-01.)
         tcp dport %d accept%s
-        tcp dport 443 accept
+        tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
         icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
@@ -342,14 +434,17 @@ table inet sm {
 }
 `,
 		RulesetFile, RulesetFile,
-		formatSet(SetWhitelist4, "ipv4_addr", `Infra confiable IPv4 — bypass total (SSoT)`, wl4),
-		formatSet(SetWhitelist6, "ipv6_addr", `Infra confiable IPv6 — bypass total (SSoT)`, wl6),
+		formatSet(SetWhitelist4, "ipv4_addr", `Confiables IPv4 (Tier A) — bypass GeoIP, fail2ban vigila`, wl4),
+		formatSet(SetWhitelist6, "ipv6_addr", `Confiables IPv6 (Tier A) — bypass GeoIP, fail2ban vigila`, wl6),
+		formatSet(SetImmune4, "ipv4_addr", `Intocables IPv4 (Tier B) — bypass GeoIP + fail2ban ignoreip`, im4),
+		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B) — bypass GeoIP + fail2ban ignoreip`, im6),
 		formatSet(SetBlacklist4, "ipv4_addr", `Bans manuales IPv4`, bl4),
 		formatSet(SetBlacklist6, "ipv6_addr", `Bans manuales IPv6`, bl6),
 		geoipSetsBlock(geoip),
 		tailscaleRule,
 		SetBlacklist4, SetBlacklist6,
 		SetWhitelist4, SetWhitelist6,
+		SetImmune4, SetImmune6,
 		globalExceptionsBlock(svc),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
