@@ -2,6 +2,7 @@
 set -e
 
 BINARY="security-manager-ng"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 REMOTE="${1}"
 if [[ -z "${REMOTE}" ]]; then
@@ -20,7 +21,9 @@ if [[ ! -f "${INSTALLER}" ]]; then
 fi
 
 echo "[deploy] Compilando para linux/amd64 (estático)..."
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o "${BINARY}" .
+cd "${REPO_ROOT}"
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o "${BINARY}" .
 
 chmod +x "${INSTALLER}"
 
