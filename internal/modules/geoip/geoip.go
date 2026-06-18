@@ -40,6 +40,7 @@ func (g *GeoIP) Menu() {
 		fmt.Println("  │  [3] Ver países permitidos               │")
 		fmt.Println("  │  [4] Actualizar rangos (ipdeny.com)      │")
 		fmt.Println("  │  [5] Aplicar / recargar ruleset          │")
+		fmt.Println("  │  [?] Vista previa del ruleset            │")
 		fmt.Println("  │  [0] Volver                              │")
 		fmt.Println("  └─────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
@@ -58,6 +59,8 @@ func (g *GeoIP) Menu() {
 			g.updateRanges()
 		case "5":
 			g.applyGeoIP()
+		case "?":
+			g.previewRuleset()
 		case "0":
 			return
 		default:
@@ -193,6 +196,29 @@ func (g *GeoIP) updateRanges() {
 	fmt.Println("\n  Actualización completada. Usa [5] para aplicar el ruleset.")
 }
 
+func (g *GeoIP) previewRuleset() {
+	geoip, err := infra.LoadGeoIPData()
+	if err != nil {
+		fmt.Printf("  ERROR cargando datos GeoIP: %v\n", err)
+		return
+	}
+	sshPort := infra.DetectSSHPort()
+	ruleset := infra.GenerateRuleset(sshPort, geoip)
+
+	fmt.Println("\n  ┌─ Vista previa del ruleset (sm.nft) ─────┐")
+	fmt.Println("  " + strings.Repeat("─", 42))
+	for i, line := range strings.Split(ruleset, "\n") {
+		if i < 50 {
+			fmt.Printf("  %s\n", line)
+		} else if i == 50 {
+			fmt.Println("  ... (truncado para brevedad)")
+			break
+		}
+	}
+	fmt.Println("  " + strings.Repeat("─", 42))
+	fmt.Println()
+}
+
 func (g *GeoIP) applyGeoIP() {
 	geoip, err := infra.LoadGeoIPData()
 	if err != nil {
@@ -211,6 +237,17 @@ func (g *GeoIP) applyGeoIP() {
 			fmt.Println("  Cancelado.")
 			return
 		}
+	}
+
+	fmt.Println("\n  ⚠️  IMPORTANTE: ¿Whitelisteaste tu IP/red antes de aplicar GeoIP?")
+	fmt.Println("     Si tu país no está en la lista de permitidos, GeoIP puede bloquear tu SSH.")
+	fmt.Print("  ¿Continuar? [s/N]: ")
+	if !g.scanner.Scan() {
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(g.scanner.Text())) != "s" {
+		fmt.Println("  Cancelado.")
+		return
 	}
 	sshPort := infra.DetectSSHPort()
 	ruleset := infra.GenerateRuleset(sshPort, geoip)
