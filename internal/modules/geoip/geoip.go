@@ -207,13 +207,8 @@ func (g *GeoIP) previewRuleset() {
 
 	fmt.Println("\n  ┌─ Vista previa del ruleset (sm.nft) ─────┐")
 	fmt.Println("  " + strings.Repeat("─", 42))
-	for i, line := range strings.Split(ruleset, "\n") {
-		if i < 50 {
-			fmt.Printf("  %s\n", line)
-		} else if i == 50 {
-			fmt.Println("  ... (truncado para brevedad)")
-			break
-		}
+	for _, line := range strings.Split(ruleset, "\n") {
+		fmt.Printf("  %s\n", line)
 	}
 	fmt.Println("  " + strings.Repeat("─", 42))
 	fmt.Println()
