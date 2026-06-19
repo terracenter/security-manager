@@ -684,3 +684,35 @@ para validación ACME HTTP-01 de Let's Encrypt. Visible solo en hosts con IP pú
 actualizó para pasar port80. Auditoría Sonnet confirmó corrección contra código real.
 
 **Próxima tarea:** reanudar TASK-013 — piloto en PILOT-HOST-REDACTED (FASE A0 pendiente)
+
+---
+
+## [TASK-FIX-SSH-DETECT] GetSSHIP() fallback bajo sudo
+
+| Campo      | Valor |
+|------------|-------|
+| Fecha      | 2026-06-18 |
+| Estado     | ✅ COMPLETADA |
+| Commit     | a816549 |
+| Archivos   | internal/sys/sys.go |
+
+**Contexto:** Detectado durante TASK-013 piloto. La whitelist no auto-detecta la IP SSH cuando el operador ejecuta `sudo security-manager-ng` (sudo limpia SSH_CLIENT del entorno).
+
+**Causa raíz:** 
+1. `SSH_CLIENT` es eliminada por `sudo` — fallback `w -ih` muestra todos los usuarios (ambiguo multi-sesión)
+2. No se intentaba `SSH_CONNECTION` (segunda var estándar SSH)
+
+**Fix:** Reemplazar fallback con `who am i` (identifica la sesión actual, funciona bajo sudo, IP entre paréntesis).
+
+### Checklist G1–G6
+
+| # | Ítem | Status | Detalle |
+|---|------|--------|---------|
+| G1 | Reemplazar GetSSHIP() completa | ✅ | líneas 11-29 → nueva versión con loop env vars + who am i |
+| G2 | Sin referencia a "w" | ✅ | `grep '"w"' internal/sys/sys.go` → 0 resultados |
+| G3 | "who am i" presente | ✅ | `exec.Command("who", "am", "i")` en línea 25 |
+| G4 | SSH_CONNECTION incluido | ✅ | Loop sobre `[]string{"SSH_CLIENT", "SSH_CONNECTION"}` en línea 15 |
+| G5 | go build + go vet limpios | ✅ | BUILD_OK + VET_OK |
+| G6 | commit + TASK_LOG + vault | ✅ | Hash a816549; entrada aquí; vault actualizado |
+
+**Próxima tarea:** reanudar TASK-013 — piloto en PILOT-HOST-REDACTED (FASE B pendiente)
