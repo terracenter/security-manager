@@ -40,6 +40,7 @@ func (g *GeoIP) Menu() {
 		fmt.Println("  │  [3] Ver países permitidos               │")
 		fmt.Println("  │  [4] Actualizar rangos (ipdeny.com)      │")
 		fmt.Println("  │  [5] Aplicar / recargar ruleset          │")
+		fmt.Println("  │  [6] Resetear GeoIP                      │")
 		fmt.Println("  │  [?] Vista previa del ruleset            │")
 		fmt.Println("  │  [0] Volver                              │")
 		fmt.Println("  └─────────────────────────────────────────┘")
@@ -59,6 +60,8 @@ func (g *GeoIP) Menu() {
 			g.updateRanges()
 		case "5":
 			g.applyGeoIP()
+		case "6":
+			g.resetGeoIP()
 		case "?":
 			g.previewRuleset()
 		case "0":
@@ -323,6 +326,45 @@ func (g *GeoIP) applyGeoIP() {
 	if err != nil {
 		fmt.Printf("\n  [geoip] %v\n", err)
 	}
+}
+
+func (g *GeoIP) resetGeoIP() {
+	fmt.Println("\n  ⚠  RESET GeoIP: borra lista de países, zone files y recarga ruleset sin restricción geográfica.")
+	fmt.Print("  ¿Confirmar reset? [s/N]: ")
+	if !g.scanner.Scan() {
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(g.scanner.Text())) != "s" {
+		fmt.Println("  Cancelado.")
+		return
+	}
+
+	// Borrar lista de países
+	if err := os.Remove(infra.AllowedCountriesFile); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("  ERROR borrando lista de países: %v\n", err)
+		return
+	}
+	fmt.Println("  Lista de países borrada.")
+
+	// Borrar zone files
+	entries, err := os.ReadDir(infra.GeoIPDir)
+	if err != nil && !os.IsNotExist(err) {
+		fmt.Printf("  ERROR leyendo directorio GeoIP: %v\n", err)
+		return
+	}
+	removed := 0
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".zone") || strings.HasSuffix(name, ".zone6") {
+			_ = os.Remove(infra.GeoIPDir + "/" + name)
+			removed++
+		}
+	}
+	fmt.Printf("  Zone files eliminados: %d\n", removed)
+
+	// Recargar ruleset sin GeoIP (stage 7 sin restricción)
+	fmt.Println("  Recargando ruleset sin restricción geográfica...")
+	g.applyGeoIP()
 }
 
 func validCC(cc string) bool {
