@@ -641,3 +641,46 @@ Resultado: `iif lo acceptsm_blacklist4` + sets stages 5/6 mezclados.
 **Hash de commits:** 7338ad4 (GeoIP) · 9abdce4 (VPN) · 13f5f08 (fix orden Sonnet)
 
 **Próxima tarea:** TASK-013 — Prueba piloto en host Debian (iDRAC de respaldo)
+
+---
+
+## [FEAT-PORT80-GLOBAL] port80_global configurable — toggle ACME/Let's Encrypt
+
+| Campo      | Valor |
+|------------|-------|
+| Fecha      | 2026-06-18 |
+| Estado     | ✅ COMPLETADA |
+| Commit     | b0eef1b |
+| Archivos   | infra.go, firewall.go, ruleset_test.go, geoip.go |
+
+**Contexto:** Feature para habilitar/deshabilitar port 80 global (bypass GeoIP ALLOWLIST)
+para validación ACME HTTP-01 de Let's Encrypt. Visible solo en hosts con IP pública.
+
+| Fase | Status | Detalle |
+|------|--------|---------|
+| diseño | ✅ | Sonnet 4.6 — C1–C11 especificados en handoff |
+| desarrollo | ✅ | Haiku 4.5 ejecutó C1–C11 |
+| auditoría | ✅ | Sonnet 4.6 auditó contra código real (2026-06-18) |
+| commit | ✅ | b0eef1b |
+
+**Checklist C1–C11:**
+
+| # | Ítem | Status |
+|---|------|--------|
+| C1 | import "net" en infra.go | ✅ |
+| C2 | constante OptionsFile | ✅ |
+| C3 | privateRanges + isPrivateIP() + HasPublicIP() | ✅ |
+| C4 | ReadPort80Option() + WritePort80Option() | ✅ |
+| C5 | firma GenerateRuleset(…, port80 bool) | ✅ |
+| C6 | globalExceptionsBlock recibe port80 bool | ✅ |
+| C7 | applyBase() — prompt si IP pública y opción no configurada | ✅ |
+| C8 | Menu() opción [4] condicional + togglePort80() | ✅ |
+| C9 | ruleset_test.go — TestGenerateRulesetPort80Disabled() nuevo | ✅ |
+| C10 | go build + vet + test — 3 passed | ✅ |
+| C11 | commit b0eef1b | ✅ |
+
+**Hallazgo incidental (resuelto):** dos llamadas a GenerateRuleset() en geoip.go
+(previewRuleset:206, applyGeoIP:248) no contempladas en el checklist. Haiku las
+actualizó para pasar port80. Auditoría Sonnet confirmó corrección contra código real.
+
+**Próxima tarea:** reanudar TASK-013 — piloto en PILOT-HOST-REDACTED (FASE A0 pendiente)
