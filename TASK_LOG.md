@@ -779,3 +779,44 @@ actualizó para pasar port80. Auditoría Sonnet confirmó corrección contra có
 - `[1] add VE,CO,PE,DO` → 0 prompts GeoIP → descarga + apply automático
 
 **Próxima tarea:** redeploy a PILOT-HOST-REDACTED y validación de FASE B de TASK-013
+
+---
+
+## [TASK-UX-BANNER] Mostrar estado inet sm en banner de arranque
+
+| Campo      | Valor |
+|------------|-------|
+| Fecha      | 2026-06-19 |
+| Estado     | ✅ COMPLETADA |
+| Commit     | 975bdb8 |
+| Archivos   | main.go |
+
+**Contexto:** Agregar una línea de estado al banner principal (`printMenu`) que muestre en cada ciclo del menú: estado de tabla inet sm, puerto SSH, países GeoIP, contadores de whitelist y blacklist.
+
+**Cambios implementados:**
+
+1. **Struct `sysStatus`** — contiene campos: smActive (bool), sshPort (int), geoCountries ([]string), wlCount (int), blCount (int).
+2. **Función `collectStatus()`** — consulta estado actual en tiempo real: nft (tabla inet sm), SSH port (DetectSSHPort), GeoIP (LoadGeoIPData), whitelists (ReadACLEntries v4+v6), blacklists (ReadACLEntries v4+v6).
+3. **Modificar `printMenu()`** — llama collectStatus() al inicio y renderiza línea de estado: `inet sm: ✓ activa | SSH: :22 | GeoIP: VE CO PE DO | WL: 3 | BL: 0`.
+
+### Checklist H1–H5
+
+| # | Ítem | Status | Detalle |
+|---|------|--------|---------|
+| H1 | Agregar struct sysStatus + collectStatus() | ✅ | Struct y función presentes, compilación exitosa |
+| H2 | Import `infra` agregado | ✅ | Import incluido entre los internos en línea 17 |
+| H3 | printMenu() llama collectStatus() y renderiza status | ✅ | Status line mostrada antes de opciones del menú |
+| H4 | go build + go vet + go test limpios | ✅ | BUILD_OK, VET_OK, TEST_OK (3 passed) |
+| H5 | commit + TASK_LOG + vault | ✅ | Hash 975bdb8; entrada aquí; vault actualizado 2026-06-19 |
+
+**Output esperado:**
+```
+  inet sm: ✓ activa  |  SSH: :22  |  GeoIP: VE CO PE DO  |  WL: 3  |  BL: 0
+```
+
+O si tabla inactiva:
+```
+  inet sm: ✗ inactiva  |  SSH: :22  |  GeoIP: —  |  WL: 0  |  BL: 0
+```
+
+**Validación:** La línea aparece en cada iteración del menú, con valores actualizados en tiempo real.
