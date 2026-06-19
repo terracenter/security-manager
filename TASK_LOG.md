@@ -743,3 +743,39 @@ actualizó para pasar port80. Auditoría Sonnet confirmó corrección contra có
 | UX-4 | go build + vet + test limpios | ✅ |
 
 **Pendiente:** deploy a PILOT-HOST-REDACTED y validación del flujo completo ([6] reset → [1] agregar VE,CO,PE,DO)
+
+---
+
+## [FEAT-GEOIP-APPLY-CORE] Eliminar confirmaciones redundantes en reset y add
+
+| Campo      | Valor |
+|------------|-------|
+| Fecha      | 2026-06-19 |
+| Estado     | ✅ COMPLETADA |
+| Commit     | 05c2411 |
+| Archivos   | internal/modules/geoip/geoip.go |
+
+**Contexto:** Durante piloto TASK-013, el operador detectó que `[6] resetGeoIP()` y `[1] addCountry()` disparan confirmaciones redundantes por delegar en `applyGeoIP()` que contiene guardas interactivas diseñadas solo para el flujo manual `[5]`.
+
+**Síntoma:** 
+- `[6] reset` → 3 prompts (reset confirm + "sin países?" + "¿whitelisteaste IP?") cuando debería ser 1
+- `[1] add país` → 2 prompts automáticas innecesarias tras agregar y descargar
+
+**Fix:** Extraer `applyGeoIPCore()` con solo la lógica de escritura/safeapply (sin confirmaciones). Mantener `applyGeoIP()` con guardas interactivas para el flujo manual `[5]`.
+
+### Checklist H1–H6
+
+| # | Ítem | Status | Detalle |
+|---|------|--------|---------|
+| H1 | Agregar applyGeoIPCore() completa | ✅ | Función privada con mk/write/nft-validate/backup/apply sin confirmaciones |
+| H2 | applyGeoIP() delega en applyGeoIPCore() | ✅ | Solo guardas interactivas, al final llama applyGeoIPCore() |
+| H3 | resetGeoIP() → applyGeoIPCore() | ✅ | Cambio de llamada; 1 solo prompt (reset confirm) antes de ejecutar |
+| H4 | addCountry() → applyGeoIPCore() | ✅ | Cambio de llamada; 0 prompts de GeoIP (solo aviso "asegúrate whitelist") |
+| H5 | go build + go vet + go test limpios | ✅ | BUILD_OK + VET_OK + TEST_OK (3 passed en 12 packages) |
+| H6 | commit + TASK_LOG + vault | ✅ | Hash 05c2411; entrada aquí; vault actualizado 2026-06-19 |
+
+**Resultado:** Flujo completamente automático sin confirmaciones redundantes:
+- `[6] reset` → 1 prompt (confirmar destructivo) → ejecuta
+- `[1] add VE,CO,PE,DO` → 0 prompts GeoIP → descarga + apply automático
+
+**Próxima tarea:** redeploy a PILOT-HOST-REDACTED y validación de FASE B de TASK-013
