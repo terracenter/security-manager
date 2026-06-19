@@ -70,32 +70,65 @@ func (g *GeoIP) Menu() {
 }
 
 func (g *GeoIP) addCountry() {
-	fmt.Print("\n  Código de país ISO 3166-1 alfa-2 a PERMITIR (ej: VE, CO, US): ")
+	fmt.Print("\n  Código(s) de país ISO 3166-1 alfa-2 a PERMITIR (ej: VE, CO, PE, DO): ")
 	if !g.scanner.Scan() {
 		return
 	}
-	cc := strings.ToUpper(strings.TrimSpace(g.scanner.Text()))
-	if !validCC(cc) {
-		fmt.Println("  ERROR: código inválido — usa 2 letras (ej: CN, RU).")
+
+	var toAdd []string
+	for _, raw := range strings.Split(g.scanner.Text(), ",") {
+		cc := strings.ToUpper(strings.TrimSpace(raw))
+		if cc == "" {
+			continue
+		}
+		if !validCC(cc) {
+			fmt.Printf("  ERROR: '%s' no es un código válido — usa 2 letras (ej: VE).\n", cc)
+			return
+		}
+		toAdd = append(toAdd, cc)
+	}
+	if len(toAdd) == 0 {
+		fmt.Println("  ERROR: no se especificó ningún país.")
 		return
 	}
+
 	countries, err := loadCountries()
 	if err != nil {
 		fmt.Printf("  ERROR leyendo config: %v\n", err)
 		return
 	}
+
+	existing := make(map[string]bool)
 	for _, c := range countries {
-		if c == cc {
-			fmt.Printf("  %s ya está en la lista.\n", cc)
-			return
-		}
+		existing[c] = true
 	}
-	countries = append(countries, cc)
+
+	var added []string
+	for _, cc := range toAdd {
+		if existing[cc] {
+			fmt.Printf("  %s ya está en la lista — omitido.\n", cc)
+			continue
+		}
+		countries = append(countries, cc)
+		existing[cc] = true
+		added = append(added, cc)
+	}
+
+	if len(added) == 0 {
+		fmt.Println("  Sin cambios — todos los países indicados ya estaban en la lista.")
+		return
+	}
+
 	if err := saveCountries(countries); err != nil {
 		fmt.Printf("  ERROR guardando config: %v\n", err)
 		return
 	}
-	fmt.Printf("  %s agregado. Usa [4] para descargar rangos y [5] para aplicar.\n", cc)
+
+	fmt.Printf("\n  Agregado(s): %s\n", strings.Join(added, ", "))
+	fmt.Println("  Descargando rangos GeoIP...")
+	g.updateRanges()
+	fmt.Println("\n  Aplicando ruleset con GeoIP actualizado...")
+	g.applyGeoIP()
 }
 
 func (g *GeoIP) removeCountry() {
