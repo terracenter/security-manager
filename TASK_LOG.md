@@ -820,3 +820,38 @@ O si tabla inactiva:
 ```
 
 **Validación:** La línea aparece en cada iteración del menú, con valores actualizados en tiempo real.
+
+---
+
+## TASK-REDEPLOY-UX — Validación post-redeploy v0.6.0-36 en PILOT-HOST-REDACTED
+
+| Campo | Valor |
+|-------|-------|
+| Fecha | 2026-06-19 |
+| Estado | ✅ COMPLETADA |
+| Commit binario | 1a14622 (tag v0.6.0-36) |
+| Commit handoff | 73bc7d5 (.agents) |
+| Host | PILOT-HOST-REDACTED (REDACTED-INTERNAL-IP / REDACTED-PUBLIC-IP) |
+
+### Checklist VAL-1..6
+
+| # | Ítem | Status | Detalle |
+|---|------|--------|---------|
+| VAL-1 | Versión instalada en server | ✅ | `v0.6.0-36-g1a14622` confirmada vía `sudo security-manager-ng -v` |
+| VAL-2 | Permisos del binario | ✅ | `-rwxr-x--- 1 root root` (modo 750, owner root:root) |
+| VAL-3 | Timestamp del binario | ✅ | Jun 19 2026-06-19 |
+| VAL-4 | Banner de estado en código fuente | ✅ | `grep "inet sm:"` → main.go:89 |
+| VAL-5 | inet sm table activa en server | ✅ | `table inet sm { ... }` operativa |
+| VAL-6 | Informe escrito + commit .agents | ✅ | commit 73bc7d5 en terracenter/agents |
+
+### Resultado del banner en producción
+
+```
+inet sm: ✓ activa  |  SSH: :22  |  GeoIP: VE CO PE DO  |  WL: 2  |  BL: 0
+```
+
+### Notas
+
+- Tamaño binario en servidor: 6.0M (vs 8.9M local) — diferencia esperada por `-ldflags="-s -w"` (strip de símbolos de debug).
+- VAL-1 ejecutado con `sudo security-manager-ng -v` (alternativa a `strings`, más confiable porque también valida que el binario arranca correctamente).
+- GeoIP cargado: VE CO PE DO (4 países). Whitelist: 2 entradas. Blacklist: vacía (estado limpio).
