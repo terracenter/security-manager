@@ -9,18 +9,28 @@ import (
 )
 
 // GetSSHIP retorna la IP del cliente SSH activo, o "" si no aplica.
+// Funciona incluso bajo sudo (que limpia SSH_CLIENT del entorno).
 func GetSSHIP() string {
-	if fields := strings.Fields(os.Getenv("SSH_CLIENT")); len(fields) > 0 {
-		return fields[0]
+	// Intentar variables de entorno SSH (pueden estar disponibles si se usa sudo -E).
+	for _, env := range []string{"SSH_CLIENT", "SSH_CONNECTION"} {
+		if fields := strings.Fields(os.Getenv(env)); len(fields) > 0 {
+			if ip := net.ParseIP(fields[0]); ip != nil {
+				return ip.String()
+			}
+		}
 	}
-	out, err := exec.Command("w", "-ih").Output()
+	// Fallback: 'who am i' identifica la sesión actual incluso bajo sudo.
+	// Lee el TTY de control del proceso desde /var/run/utmp.
+	// Formato de salida: "user pts/N date (IP)"
+	out, err := exec.Command("who", "am", "i").Output()
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 {
-			if ip := net.ParseIP(fields[2]); ip != nil {
+	s := string(out)
+	if start := strings.LastIndex(s, "("); start >= 0 {
+		if end := strings.LastIndex(s, ")"); end > start {
+			candidate := strings.TrimSpace(s[start+1 : end])
+			if ip := net.ParseIP(candidate); ip != nil {
 				return ip.String()
 			}
 		}
