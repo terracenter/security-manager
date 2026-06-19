@@ -716,3 +716,30 @@ actualizó para pasar port80. Auditoría Sonnet confirmó corrección contra có
 | G6 | commit + TASK_LOG + vault | ✅ | Hash a816549; entrada aquí; vault actualizado |
 
 **Próxima tarea:** reanudar TASK-013 — piloto en PILOT-HOST-REDACTED (FASE B pendiente)
+
+---
+
+## [FEAT-GEOIP-UX] GeoIP: agregar países en lote + auto-apply + reset
+
+| Campo      | Valor |
+|------------|-------|
+| Fecha      | 2026-06-19 |
+| Estado     | ✅ COMPLETADA |
+| Commits    | 43d6f48 (agregar en lote), f2feb4e (reset) |
+| Archivos   | internal/modules/geoip/geoip.go |
+
+**Contexto:** Mejora UX solicitada por Freddy durante piloto TASK-013. El flujo anterior requería 3 pasos manuales separados ([1] agregar → [4] descargar → [5] aplicar) con riesgo de olvidar aplicar.
+
+**Cambios implementados:**
+
+1. **[1] Agregar país** — acepta lista separada por comas (ej: `VE, CO, PE, DO`). Después de guardar los países nuevos, ejecuta automáticamente descarga de rangos + aplicación del ruleset.
+2. **[6] Resetear GeoIP** — nueva opción: borra `allowed_countries.conf`, elimina todos los zone files, recarga ruleset sin restricción geográfica. Útil para validar el flujo completo desde cero.
+
+| # | Ítem | Status |
+|---|------|--------|
+| UX-1 | addCountry acepta lista con comas | ✅ |
+| UX-2 | Auto-llama updateRanges + applyGeoIP | ✅ |
+| UX-3 | resetGeoIP: borra países + zone files + recarga | ✅ |
+| UX-4 | go build + vet + test limpios | ✅ |
+
+**Pendiente:** deploy a PILOT-HOST-REDACTED y validación del flujo completo ([6] reset → [1] agregar VE,CO,PE,DO)
