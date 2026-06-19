@@ -26,12 +26,21 @@ func (f *Firewall) Reset()       {}
 
 func (f *Firewall) Menu() {
 	for {
-		fmt.Println("\n  ┌─ Firewall (nftables) ──────────────────┐")
-		fmt.Println("  │  [1] Aplicar / recargar ruleset base    │")
-		fmt.Println("  │  [2] Ver estado actual                  │")
-		fmt.Println("  │  [3] Resetear tabla inet sm             │")
-		fmt.Println("  │  [0] Volver                             │")
-		fmt.Println("  └────────────────────────────────────────┘")
+		port80, _ := infra.ReadPort80Option()
+		port80Status := "INACTIVO"
+		if port80 {
+			port80Status = "ACTIVO ✓"
+		}
+
+		fmt.Println("\n  ┌─ Firewall (nftables) ────────────────────────────┐")
+		fmt.Println("  │  [1] Aplicar / recargar ruleset base              │")
+		fmt.Println("  │  [2] Ver estado actual                            │")
+		fmt.Println("  │  [3] Resetear tabla inet sm                       │")
+		if infra.HasPublicIP() {
+			fmt.Printf("  │  [4] Puerto 80 global (ACME/Let's Encrypt): %-8s│\n", port80Status)
+		}
+		fmt.Println("  │  [0] Volver                                       │")
+		fmt.Println("  └───────────────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
 
 		if !f.scanner.Scan() {
@@ -44,6 +53,12 @@ func (f *Firewall) Menu() {
 			f.showStatus()
 		case "3":
 			f.resetTable()
+		case "4":
+			if infra.HasPublicIP() {
+				f.togglePort80()
+			} else {
+				fmt.Println("  Opción no disponible: este host no tiene IPs públicas.")
+			}
 		case "0":
 			return
 		default:
@@ -52,11 +67,55 @@ func (f *Firewall) Menu() {
 	}
 }
 
+func (f *Firewall) togglePort80() {
+	current, _ := infra.ReadPort80Option()
+	if current {
+		fmt.Print("\n  Puerto 80 global está ACTIVO. ¿Desactivar? [s/N]: ")
+	} else {
+		fmt.Print("\n  Puerto 80 global está INACTIVO. ¿Activar para ACME/Let's Encrypt? [s/N]: ")
+	}
+	if !f.scanner.Scan() {
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(f.scanner.Text())) != "s" {
+		fmt.Println("  Cancelado.")
+		return
+	}
+	if err := infra.WritePort80Option(!current); err != nil {
+		fmt.Printf("  ERROR guardando opción: %v\n", err)
+		return
+	}
+	if !current {
+		fmt.Println("  Puerto 80 global ACTIVADO. Recargando ruleset...")
+	} else {
+		fmt.Println("  Puerto 80 global DESACTIVADO. Recargando ruleset...")
+	}
+	f.applyBase()
+}
+
 // applyBase genera el ruleset base, valida la sintaxis y lo aplica con safeapply.
 func (f *Firewall) applyBase() {
+	// Si el host tiene IP pública y la opción aún no está configurada → preguntar al usuario.
+	if infra.HasPublicIP() {
+		if _, found := infra.ReadPort80Option(); !found {
+			fmt.Print("\n  Host con IP pública detectado. ¿Habilitar puerto 80 global para ACME/Let's Encrypt?\n  (No aplica si usas certificados auto-firmados) [s/N]: ")
+			if f.scanner.Scan() {
+				answer := strings.ToLower(strings.TrimSpace(f.scanner.Text()))
+				enabled := answer == "s"
+				_ = infra.WritePort80Option(enabled)
+				if enabled {
+					fmt.Println("  Puerto 80 global: ACTIVADO.")
+				} else {
+					fmt.Println("  Puerto 80 global: INACTIVO.")
+				}
+			}
+		}
+	}
+
 	sshPort := infra.DetectSSHPort()
 	geoip, _ := infra.LoadGeoIPData()
-	ruleset := infra.GenerateRuleset(sshPort, geoip)
+	port80, _ := infra.ReadPort80Option()
+	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
 
 	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
 		fmt.Printf("\n  ERROR: %v\n", err)

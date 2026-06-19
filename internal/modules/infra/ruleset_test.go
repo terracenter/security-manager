@@ -6,21 +6,19 @@ import (
 	"testing"
 )
 
-// TestGenerateRulesetTwoTiers verifica las invariantes del rediseño two-tier
-// y la corrección del orden de stages (443 country-restricted POR DISEÑO).
 func TestGenerateRulesetTwoTiers(t *testing.T) {
 	geoip := GeoIPData{Countries: []CountrySet{
 		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
 	}}
-	rs := GenerateRuleset(22, geoip)
+	rs := GenerateRuleset(22, geoip, true)
 
 	mustContain := []string{
 		"set sm_whitelist4", "set sm_whitelist6",
 		"set sm_immune4", "set sm_immune6",
 		"ip  saddr @sm_whitelist4 accept",
 		"ip  saddr @sm_immune4 accept",
-		"tcp dport 80 accept",  // global, Let's Encrypt
-		"tcp dport 443 accept", // country-restricted
+		"tcp dport 80 accept",
+		"tcp dport 443 accept",
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(rs, want) {
@@ -28,7 +26,6 @@ func TestGenerateRulesetTwoTiers(t *testing.T) {
 		}
 	}
 
-	// INVARIANTE CRÍTICA: 443 debe ir DESPUÉS del geoallow drop (country-restricted).
 	geoDrop := strings.Index(rs, "saddr != @sm_geoallow4 drop")
 	pos443 := strings.Index(rs, "tcp dport 443 accept")
 	pos80 := strings.Index(rs, "tcp dport 80 accept")
@@ -39,23 +36,34 @@ func TestGenerateRulesetTwoTiers(t *testing.T) {
 		t.Errorf("puerto 80 debe ir ANTES del geoallow (global Let's Encrypt): 80=%d geo=%d", pos80, geoDrop)
 	}
 	if !(pos443 > geoDrop) {
-		t.Errorf("puerto 443 debe ir DESPUÉS del geoallow (country-restricted por diseño): 443=%d geo=%d", pos443, geoDrop)
+		t.Errorf("puerto 443 debe ir DESPUÉS del geoallow (country-restricted): 443=%d geo=%d", pos443, geoDrop)
 	}
-
-	// El whitelist accept (stage 6) debe ir antes del geoallow (stage 7).
 	wlAccept := strings.Index(rs, "ip  saddr @sm_whitelist4 accept")
 	if !(wlAccept < geoDrop) {
 		t.Errorf("whitelist accept (stage 6) debe ir antes del geoallow (stage 7)")
 	}
 }
 
-// TestReadACLEntries valida el parser de metadatos y la tolerancia a líneas planas.
+func TestGenerateRulesetPort80Disabled(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, geoip, false)
+
+	if strings.Contains(rs, "tcp dport 80 accept") {
+		t.Error("ruleset no debe contener tcp dport 80 cuando port80=false")
+	}
+	if !strings.Contains(rs, "tcp dport 443 accept") {
+		t.Error("tcp dport 443 debe estar presente independientemente de port80")
+	}
+}
+
 func TestReadACLEntries(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/wl.conf"
 	content := "# comentario\n" +
 		"172.16.11.0/24 | Freddy | Admin LAN | 2026-06-18 | 2027-06-18\n" +
-		"10.0.0.5\n" + // línea plana (compat)
+		"10.0.0.5\n" +
 		"\n"
 	if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
 		t.Fatal(err)

@@ -3,6 +3,7 @@ package infra
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,9 @@ const (
 	Immune6File    = ConfDir + "/immune6.conf"
 	Blacklist4File = ConfDir + "/blacklist4.conf"
 	Blacklist6File = ConfDir + "/blacklist6.conf"
+
+	// Opciones generales del ruleset
+	OptionsFile = ConfDir + "/options.conf"
 
 	// GeoIP
 	GeoIPDir             = ConfDir + "/geoip"
@@ -185,6 +189,105 @@ func ACLAddresses(entries []ACLEntry) []string {
 	return addrs
 }
 
+// privateRanges cubre RFC 1918, CGNAT (RFC 6598), loopback, link-local y ULA IPv6 (RFC 4193).
+var privateRanges = func() []*net.IPNet {
+	var nets []*net.IPNet
+	for _, cidr := range []string{
+		"127.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"100.64.0.0/10",
+		"169.254.0.0/16",
+		"::1/128",
+		"fe80::/10",
+		"fc00::/7",
+	} {
+		_, n, _ := net.ParseCIDR(cidr)
+		nets = append(nets, n)
+	}
+	return nets
+}()
+
+func isPrivateIP(ip net.IP) bool {
+	for _, r := range privateRanges {
+		if r != nil && r.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasPublicIP devuelve true si al menos una interfaz del host tiene una IP pública (no RFC privada/especial).
+// Itera todas las interfaces y todas sus IPs — un host puede tener IPs privadas y públicas simultáneamente.
+func HasPublicIP() bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip != nil && !isPrivateIP(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ReadPort80Option lee la clave port80_global de OptionsFile.
+// Retorna (enabled, found). found=false si el archivo o la clave no existen.
+func ReadPort80Option() (bool, bool) {
+	f, err := os.Open(OptionsFile)
+	if err != nil {
+		return false, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(line, "port80_global=") {
+			val := strings.TrimPrefix(line, "port80_global=")
+			return val == "true", true
+		}
+	}
+	return false, false
+}
+
+// WritePort80Option escribe o actualiza port80_global en OptionsFile.
+// Preserva el resto de claves que pudiera contener el archivo.
+func WritePort80Option(enabled bool) error {
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	var lines []string
+	f, err := os.Open(OptionsFile)
+	if err == nil {
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			l := strings.TrimSpace(sc.Text())
+			if l != "" && !strings.HasPrefix(l, "port80_global=") {
+				lines = append(lines, l)
+			}
+		}
+		f.Close()
+	}
+	lines = append(lines, "port80_global="+val)
+	return os.WriteFile(OptionsFile, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+}
+
 // DetectSSHPort lee /etc/ssh/sshd_config y retorna el puerto SSH (default 22).
 func DetectSSHPort() int {
 	data, err := os.ReadFile("/etc/ssh/sshd_config")
@@ -319,9 +422,11 @@ func DetectGlobalServices() GlobalServices {
 }
 
 // globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN.
-func globalExceptionsBlock(svc GlobalServices) string {
+func globalExceptionsBlock(svc GlobalServices, port80 bool) string {
 	var sb strings.Builder
-	sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01 (global — ACME valida desde cualquier país)\n")
+	if port80 {
+		sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01 (global — ACME valida desde cualquier país)\n")
+	}
 	for _, port := range svc.WireGuardPorts {
 		sb.WriteString(fmt.Sprintf("        udp dport %d accept   # WireGuard (auto-detectado)\n", port))
 	}
@@ -333,7 +438,7 @@ func globalExceptionsBlock(svc GlobalServices) string {
 
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist desde los archivos de config para preservar entradas entre recargas.
-func GenerateRuleset(sshPort int, geoip GeoIPData) string {
+func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
 	svc := DetectGlobalServices()
 
 	sshComment := ""
@@ -445,7 +550,7 @@ table inet sm {
 		SetBlacklist4, SetBlacklist6,
 		SetWhitelist4, SetWhitelist6,
 		SetImmune4, SetImmune6,
-		globalExceptionsBlock(svc),
+		globalExceptionsBlock(svc, port80),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
 	)

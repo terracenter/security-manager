@@ -203,7 +203,8 @@ func (g *GeoIP) previewRuleset() {
 		return
 	}
 	sshPort := infra.DetectSSHPort()
-	ruleset := infra.GenerateRuleset(sshPort, geoip)
+	port80, _ := infra.ReadPort80Option()
+	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
 
 	fmt.Println("\n  ┌─ Vista previa del ruleset (sm.nft) ─────┐")
 	fmt.Println("  " + strings.Repeat("─", 42))
@@ -245,7 +246,8 @@ func (g *GeoIP) applyGeoIP() {
 		return
 	}
 	sshPort := infra.DetectSSHPort()
-	ruleset := infra.GenerateRuleset(sshPort, geoip)
+	port80, _ := infra.ReadPort80Option()
+	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
 
 	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
