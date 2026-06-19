@@ -556,9 +556,9 @@ table inet sm {
 	)
 }
 
-func formatSet(name, addrType, comment string, elements []string) string {
-	s := fmt.Sprintf("\n    set %s {\n        type %s\n        flags interval\n        comment %q\n",
-		name, addrType, comment)
+func formatSet(name, addrType, _ string, elements []string) string {
+	s := fmt.Sprintf("\n    set %s {\n        type %s\n        flags interval\n",
+		name, addrType)
 	if len(elements) > 0 {
 		s += fmt.Sprintf("        elements = { %s }\n", strings.Join(elements, ", "))
 	}
@@ -569,8 +569,8 @@ func formatSet(name, addrType, comment string, elements []string) string {
 func geoipSetsBlock(geoip GeoIPData) string {
 	if len(geoip.Countries) == 0 {
 		return fmt.Sprintf(
-			"\n    set %s {\n        type ipv4_addr\n        flags interval\n        comment \"GeoIP — países permitidos (vacío)\"\n    }\n"+
-				"\n    set %s {\n        type ipv6_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv6 (vacío)\"\n    }\n",
+			"\n    set %s {\n        type ipv4_addr\n        flags interval\n    }\n"+
+				"\n    set %s {\n        type ipv6_addr\n        flags interval\n    }\n",
 			SetGeoAllow4, SetGeoAllow6)
 	}
 	var all4, all6 []string
@@ -578,12 +578,12 @@ func geoipSetsBlock(geoip GeoIPData) string {
 		all4 = append(all4, cs.Ranges4...)
 		all6 = append(all6, cs.Ranges6...)
 	}
-	s4 := fmt.Sprintf("\n    set %s {\n        type ipv4_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv4\"\n", SetGeoAllow4)
+	s4 := fmt.Sprintf("\n    set %s {\n        type ipv4_addr\n        flags interval\n", SetGeoAllow4)
 	if len(all4) > 0 {
 		s4 += fmt.Sprintf("        elements = { %s }\n", strings.Join(all4, ", "))
 	}
 	s4 += "    }\n"
-	s6 := fmt.Sprintf("\n    set %s {\n        type ipv6_addr\n        flags interval\n        comment \"GeoIP — países permitidos IPv6\"\n", SetGeoAllow6)
+	s6 := fmt.Sprintf("\n    set %s {\n        type ipv6_addr\n        flags interval\n", SetGeoAllow6)
 	if len(all6) > 0 {
 		s6 += fmt.Sprintf("        elements = { %s }\n", strings.Join(all6, ", "))
 	}
