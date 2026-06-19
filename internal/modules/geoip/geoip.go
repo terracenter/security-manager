@@ -128,10 +128,11 @@ func (g *GeoIP) addCountry() {
 	}
 
 	fmt.Printf("\n  Agregado(s): %s\n", strings.Join(added, ", "))
+	fmt.Println("  ⚠  Asegúrate de que tu IP esté en Whitelist antes de aplicar GeoIP.")
 	fmt.Println("  Descargando rangos GeoIP...")
 	g.updateRanges()
 	fmt.Println("\n  Aplicando ruleset con GeoIP actualizado...")
-	g.applyGeoIP()
+	g.applyGeoIPCore()
 }
 
 func (g *GeoIP) removeCountry() {
@@ -251,6 +252,60 @@ func (g *GeoIP) previewRuleset() {
 	fmt.Println()
 }
 
+// applyGeoIPCore genera, valida sintaxis y aplica el ruleset GeoIP sin confirmaciones interactivas.
+// Llamar desde flujos automáticos (resetGeoIP, addCountry). Para uso manual usar applyGeoIP().
+func (g *GeoIP) applyGeoIPCore() {
+	geoip, err := infra.LoadGeoIPData()
+	if err != nil {
+		fmt.Printf("  ERROR cargando datos GeoIP: %v\n", err)
+		return
+	}
+	sshPort := infra.DetectSSHPort()
+	port80, _ := infra.ReadPort80Option()
+	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
+
+	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
+		fmt.Printf("  ERROR: %v\n", err)
+		return
+	}
+
+	tmpFile := infra.ConfDir + "/sm.nft.new"
+	if err := os.WriteFile(tmpFile, []byte(ruleset), 0o640); err != nil {
+		fmt.Printf("  ERROR escribiendo ruleset: %v\n", err)
+		return
+	}
+	defer os.Remove(tmpFile)
+
+	fmt.Println("  Validando sintaxis (nft -c)...")
+	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
+	if err != nil {
+		fmt.Printf("  ERROR de sintaxis:\n%s\n", strings.TrimSpace(string(out)))
+		return
+	}
+	fmt.Println("  Sintaxis OK.")
+
+	if cur, readErr := os.ReadFile(infra.RulesetFile); readErr == nil {
+		_ = os.WriteFile(infra.BackupFile, cur, 0o640)
+		fmt.Printf("  [geoip] Backup: %s → %s\n", infra.RulesetFile, infra.BackupFile)
+	}
+
+	if err := os.Rename(tmpFile, infra.RulesetFile); err != nil {
+		fmt.Printf("  ERROR moviendo ruleset: %v\n", err)
+		return
+	}
+
+	err = safeapply.Apply(safeapply.Plan{
+		BackupFile:     infra.BackupFile,
+		RulesetFile:    infra.RulesetFile,
+		DeadmanTimeout: 120,
+		WhitelistSet:   "",
+		SkipBackup:     true,
+	})
+	if err != nil {
+		fmt.Printf("\n  [geoip] %v\n", err)
+	}
+}
+
 func (g *GeoIP) applyGeoIP() {
 	geoip, err := infra.LoadGeoIPData()
 	if err != nil {
@@ -281,51 +336,8 @@ func (g *GeoIP) applyGeoIP() {
 		fmt.Println("  Cancelado.")
 		return
 	}
-	sshPort := infra.DetectSSHPort()
-	port80, _ := infra.ReadPort80Option()
-	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
 
-	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
-		return
-	}
-
-	tmpFile := infra.ConfDir + "/sm.nft.new"
-	if err := os.WriteFile(tmpFile, []byte(ruleset), 0o640); err != nil {
-		fmt.Printf("  ERROR escribiendo ruleset: %v\n", err)
-		return
-	}
-	defer os.Remove(tmpFile)
-
-	fmt.Println("\n  Validando sintaxis (nft -c)...")
-	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
-	if err != nil {
-		fmt.Printf("  ERROR de sintaxis:\n%s\n", strings.TrimSpace(string(out)))
-		return
-	}
-	fmt.Println("  Sintaxis OK.")
-
-	// Backup del ruleset ACTUAL antes de sobreescribir.
-	if cur, readErr := os.ReadFile(infra.RulesetFile); readErr == nil {
-		_ = os.WriteFile(infra.BackupFile, cur, 0o640)
-		fmt.Printf("  [geoip] Backup: %s → %s\n", infra.RulesetFile, infra.BackupFile)
-	}
-
-	if err := os.Rename(tmpFile, infra.RulesetFile); err != nil {
-		fmt.Printf("  ERROR moviendo ruleset: %v\n", err)
-		return
-	}
-
-	err = safeapply.Apply(safeapply.Plan{
-		BackupFile:     infra.BackupFile,
-		RulesetFile:    infra.RulesetFile,
-		DeadmanTimeout: 120,
-		WhitelistSet:   "",
-		SkipBackup:     true,
-	})
-	if err != nil {
-		fmt.Printf("\n  [geoip] %v\n", err)
-	}
+	g.applyGeoIPCore()
 }
 
 func (g *GeoIP) resetGeoIP() {
@@ -364,7 +376,7 @@ func (g *GeoIP) resetGeoIP() {
 
 	// Recargar ruleset sin GeoIP (stage 7 sin restricción)
 	fmt.Println("  Recargando ruleset sin restricción geográfica...")
-	g.applyGeoIP()
+	g.applyGeoIPCore()
 }
 
 func validCC(cc string) bool {
