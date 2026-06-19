@@ -14,12 +14,45 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/modules/firewall"
 	"github.com/terracenter/security-manager-ng/internal/modules/geoip"
 	"github.com/terracenter/security-manager-ng/internal/modules/hardroot"
+	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/modules/ssh"
 	"github.com/terracenter/security-manager-ng/internal/modules/whitelist"
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 var Version = "dev"
+
+type sysStatus struct {
+	smActive     bool
+	sshPort      int
+	geoCountries []string
+	wlCount      int
+	blCount      int
+}
+
+func collectStatus() sysStatus {
+	s := sysStatus{}
+	s.smActive = exec.Command("nft", "list", "table", "inet", "sm").Run() == nil
+	s.sshPort = infra.DetectSSHPort()
+	if gd, err := infra.LoadGeoIPData(); err == nil {
+		for _, cs := range gd.Countries {
+			s.geoCountries = append(s.geoCountries, cs.CC)
+		}
+	}
+	if wl4, err := infra.ReadACLEntries(infra.Whitelist4File); err == nil {
+		s.wlCount += len(wl4)
+	}
+	if wl6, err := infra.ReadACLEntries(infra.Whitelist6File); err == nil {
+		s.wlCount += len(wl6)
+	}
+	if bl4, err := infra.ReadACLEntries(infra.Blacklist4File); err == nil {
+		s.blCount += len(bl4)
+	}
+	if bl6, err := infra.ReadACLEntries(infra.Blacklist6File); err == nil {
+		s.blCount += len(bl6)
+	}
+	return s
+}
 
 func initModules() []modules.Module {
 	mods := []modules.Module{
@@ -38,11 +71,24 @@ func initModules() []modules.Module {
 }
 
 func printMenu(mods []modules.Module) {
+	st := collectStatus()
 	fmt.Println("\n╔══════════════════════════════════════╗")
 	fmt.Println("║       Security Manager NG            ║")
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Printf("  Versión: %s\n", Version)
-	fmt.Printf("  Usuario activo: %s\n\n", sys.CurrentUser())
+	fmt.Printf("  Usuario activo: %s\n", sys.CurrentUser())
+
+	smStr := "✗ inactiva"
+	if st.smActive {
+		smStr = "✓ activa"
+	}
+	geoStr := "—"
+	if len(st.geoCountries) > 0 {
+		geoStr = strings.Join(st.geoCountries, " ")
+	}
+	fmt.Printf("  inet sm: %s  |  SSH: :%d  |  GeoIP: %s  |  WL: %d  |  BL: %d\n\n",
+		smStr, st.sshPort, geoStr, st.wlCount, st.blCount)
+
 	for i, m := range mods {
 		fmt.Printf("  [%d] %s\n", i+1, m.Name())
 	}
