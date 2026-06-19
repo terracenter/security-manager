@@ -52,18 +52,16 @@ func printMenu(mods []modules.Module) {
 }
 
 func ensureNftablesEnabled() {
-	if _, err := exec.Command("systemctl", "is-enabled", "nftables").Output(); err == nil {
-		if _, err := exec.Command("systemctl", "is-active", "nftables").Output(); err == nil {
-			return
-		}
+	// Solo habilitar para boot — NO iniciar (start recarga /etc/nftables.conf y borra inet sm).
+	// nftables.service es oneshot en Ubuntu/Debian: queda inactive(dead) después de cargar su config.
+	// SM-NG gestiona su propia tabla inet sm — no depender del estado del servicio.
+	out, _ := exec.Command("systemctl", "is-enabled", "nftables").Output()
+	if strings.TrimSpace(string(out)) == "enabled" {
+		return
 	}
-
-	fmt.Println("  [init] nftables no activo — habilitando y iniciando...")
-	if _, err := exec.Command("systemctl", "enable", "nftables").CombinedOutput(); err != nil {
-		fmt.Printf("  WARN: systemctl enable nftables — %v\n", err)
-	}
-	if _, err := exec.Command("systemctl", "start", "nftables").CombinedOutput(); err != nil {
-		fmt.Printf("  WARN: systemctl start nftables — %v\n", err)
+	fmt.Println("  [init] Habilitando nftables.service para arranque automático...")
+	if out, err := exec.Command("systemctl", "enable", "nftables").CombinedOutput(); err != nil {
+		fmt.Printf("  WARN: systemctl enable nftables — %v: %s\n", err, strings.TrimSpace(string(out)))
 	}
 }
 

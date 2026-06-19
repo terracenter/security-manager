@@ -157,7 +157,10 @@ func (f *Firewall) applyBase() {
 	})
 	if err != nil {
 		fmt.Printf("\n  [firewall] %v\n", err)
+		return
 	}
+
+	infra.EnsureSmNftPersistence()
 }
 
 // showStatus muestra el estado de la tabla inet sm.

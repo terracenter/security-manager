@@ -601,3 +601,25 @@ func geoipRulesBlock(geoip GeoIPData) string {
 			"        ip6 saddr != @%s drop",
 		SetGeoAllow4, SetGeoAllow6)
 }
+
+func EnsureSmNftPersistence() {
+	const nftConf = "/etc/nftables.conf"
+	const includeLine = "include \"/etc/security-manager/sm.nft\""
+
+	data, err := os.ReadFile(nftConf)
+	if err != nil {
+		fmt.Printf("  WARN: no se pudo leer %s — persistencia manual requerida\n", nftConf)
+		return
+	}
+	if strings.Contains(string(data), includeLine) {
+		return
+	}
+	f, err := os.OpenFile(nftConf, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Printf("  WARN: no se pudo escribir %s — persistencia manual requerida\n", nftConf)
+		return
+	}
+	defer f.Close()
+	_, _ = f.WriteString("\n# Security Manager NG\n" + includeLine + "\n")
+	fmt.Println("  [persist] sm.nft incluido en /etc/nftables.conf para persistencia en boot.")
+}
