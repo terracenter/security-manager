@@ -158,6 +158,27 @@ func resetGlobal(scanner *bufio.Scanner) {
 		} else {
 			fmt.Println("  [reset] OK — configuraciones purgadas.")
 		}
+
+		// Limpiar include en /etc/nftables.conf para evitar fallo de nftables.service en boot.
+		fmt.Println("  [reset] Limpiando include de /etc/nftables.conf...")
+		const nftConf = "/etc/nftables.conf"
+		if data, err := os.ReadFile(nftConf); err == nil {
+			var kept []string
+			for _, line := range strings.Split(string(data), "\n") {
+				if !strings.Contains(line, `include "/etc/security-manager/sm.nft"`) &&
+					!strings.Contains(line, "# Security Manager NG") {
+					kept = append(kept, line)
+				}
+			}
+			cleaned := strings.TrimRight(strings.Join(kept, "\n"), "\n") + "\n"
+			if err := os.WriteFile(nftConf, []byte(cleaned), 0o644); err != nil {
+				fmt.Printf("  WARN: no se pudo limpiar %s: %v\n", nftConf, err)
+			} else {
+				fmt.Println("  [reset] OK — include sm.nft eliminado de nftables.conf.")
+			}
+		} else {
+			fmt.Printf("  WARN: no se pudo leer %s: %v\n", nftConf, err)
+		}
 	}
 
 	fmt.Println("\n  ✓ Reset Global completado. El host está limpio de Security Manager NG.")

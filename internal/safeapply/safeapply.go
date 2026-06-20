@@ -92,6 +92,16 @@ func backup(p Plan) error {
 // preflight verifica que el set WhitelistSet exista en nftables.
 func preflight(p Plan) error {
 	if p.WhitelistSet == "" {
+		// Verificar que el backup (si existe) tiene sintaxis nft válida.
+		// Si el deadman se dispara y el backup está corrupto, el rollback falla.
+		if _, err := os.Stat(p.BackupFile); err == nil {
+			out, err := exec.Command("nft", "-c", "-f", p.BackupFile).CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("backup inválido — rollback no sería posible: %s",
+					strings.TrimSpace(string(out)))
+			}
+			fmt.Printf("  [safeapply] Preflight OK — backup válido: %s\n", p.BackupFile)
+		}
 		return nil
 	}
 	out, err := exec.Command("nft", "list", "set", "inet", "sm", p.WhitelistSet).CombinedOutput()
@@ -127,6 +137,7 @@ func scheduleDeadman(p Plan) (string, error) {
 
 	cmd := exec.Command(
 		"systemd-run",
+		"--collect",
 		"--unit="+unitName,
 		fmt.Sprintf("--on-active=%ds", p.DeadmanTimeout),
 	)
