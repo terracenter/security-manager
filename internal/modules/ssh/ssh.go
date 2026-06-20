@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -566,6 +567,65 @@ func (s *SSH) askAllowGroups() string {
 		return "sudo"
 	}
 	return val
+}
+
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	estado                                          Ver estado actual
+//	apply [--groups G] [--auth 1|2|3] [--tunnel]   Aplicar hardening SSH
+//	banners                                         Escribir /etc/issue.net y /etc/issue
+//	validar                                         Validar config activa (sshd -T)
+func (s *SSH) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "estado", "status":
+		s.showStatus()
+		return true
+	case "apply", "aplicar":
+		return s.cliApply(args)
+	case "banners":
+		s.applyBanners()
+		return true
+	case "validar", "validate":
+		s.validate()
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: estado, apply [--groups G] [--auth 1|2|3] [--tunnel], banners, validar")
+		return false
+	}
+}
+
+func (s *SSH) cliApply(args []string) bool {
+	fs := flag.NewFlagSet("ssh apply", flag.ContinueOnError)
+	groups := fs.String("groups", "sudo", "AllowGroups (default: sudo)")
+	auth := fs.Int("auth", 1, "Método de autenticación: 1=solo llave | 2=llave O contraseña | 3=llave Y contraseña (MFA)")
+	tunnel := fs.Bool("tunnel", false, "Habilitar PermitTunnel (default: no)")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	var authMethods, passwordAuth string
+	switch *auth {
+	case 2:
+		authMethods = "publickey password"
+		passwordAuth = "yes"
+	case 3:
+		authMethods = "publickey,password"
+		passwordAuth = "yes"
+	default:
+		authMethods = "publickey"
+		passwordAuth = "no"
+	}
+	permitTunnel := "no"
+	if *tunnel {
+		permitTunnel = "yes"
+	}
+	s.applyBase(sshBaseOpts{
+		AllowGroups:  *groups,
+		AuthMethods:  authMethods,
+		PasswordAuth: passwordAuth,
+		PermitTunnel: permitTunnel,
+	})
+	return true
 }
 
 var _ interface {

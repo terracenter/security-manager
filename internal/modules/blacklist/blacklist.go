@@ -229,6 +229,83 @@ func removeFromFile(path, entry string) error {
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
 
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	add <ip>    Banear IP o CIDR
+//	list        Listar IPs baneadas
+//	del <ip>    Eliminar IP o CIDR del ban
+//	flush       Vaciar blacklist completa
+func (b *Blacklist) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "add", "agregar":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: blacklist add <ip|CIDR>")
+			return false
+		}
+		entry := args[0]
+		setName, confFile, err := resolveSet(entry)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			return false
+		}
+		if err := nftAddElement(setName, entry); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR al banear: %v\n", err)
+			return false
+		}
+		if err := appendToFile(confFile, entry); err != nil {
+			fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+		}
+		fmt.Printf("  Baneado %s → %s\n", entry, setName)
+		return true
+
+	case "list", "listar":
+		b.listIPs()
+		return true
+
+	case "del", "delete", "eliminar":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: blacklist del <ip|CIDR>")
+			return false
+		}
+		entry := args[0]
+		setName, confFile, err := resolveSet(entry)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			return false
+		}
+		if err := nftDeleteElement(setName, entry); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR al eliminar: %v\n", err)
+			return false
+		}
+		if err := removeFromFile(confFile, entry); err != nil {
+			fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+		}
+		fmt.Printf("  Eliminado %s de %s\n", entry, setName)
+		return true
+
+	case "flush", "vaciar":
+		for _, setName := range []string{infra.SetBlacklist4, infra.SetBlacklist6} {
+			out, err := exec.Command("nft", "flush", "set", "inet", "sm", setName).CombinedOutput()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  ERROR flush %s: %s\n", setName, strings.TrimSpace(string(out)))
+				return false
+			}
+		}
+		for _, path := range []string{infra.Blacklist4File, infra.Blacklist6File} {
+			if err := os.WriteFile(path, []byte{}, 0o640); err != nil {
+				fmt.Printf("  ADVERTENCIA: no se pudo truncar %s: %v\n", path, err)
+			}
+		}
+		fmt.Println("  Blacklist vaciada.")
+		return true
+
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: add <ip>, list, del <ip>, flush")
+		return false
+	}
+}
+
 // _ ensures the interface is satisfied at compile time.
 var _ interface {
 	Order() int

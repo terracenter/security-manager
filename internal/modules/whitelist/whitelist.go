@@ -2,6 +2,7 @@ package whitelist
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -373,6 +374,162 @@ func syncFail2banIgnoreip() {
 func mustEntries(path string) []infra.ACLEntry {
 	e, _ := infra.ReadACLEntries(path)
 	return e
+}
+
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]
+//	add-self --tier A|B
+//	list [--tier A|B]
+//	del <ip> --tier A|B
+//	sync
+func (w *Whitelist) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "add", "agregar":
+		return w.cliAdd(args)
+	case "add-self", "add-auto":
+		return w.cliAddSelf(args)
+	case "list", "listar":
+		return w.cliList(args)
+	case "del", "delete", "eliminar":
+		return w.cliDel(args)
+	case "sync", "sincronizar":
+		syncFail2banIgnoreip()
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: add <ip> --tier A|B [...], add-self --tier A|B, list [--tier A|B], del <ip> --tier A|B, sync")
+		return false
+	}
+}
+
+func (w *Whitelist) cliAdd(args []string) bool {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "  Uso: whitelist add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]")
+		return false
+	}
+	addr := args[0]
+	fs := flag.NewFlagSet("whitelist add", flag.ContinueOnError)
+	tierFlag := fs.String("tier", "", "Tier: A (confiable, fail2ban vigila) | B (intocable, fail2ban ignora)")
+	responsable := fs.String("responsable", "", "Responsable de la entrada")
+	proposito := fs.String("proposito", "", "Propósito / descripción")
+	vencimiento := fs.String("vencimiento", "", "Fecha de vencimiento YYYY-MM-DD (vacío = permanente)")
+	if err := fs.Parse(args[1:]); err != nil {
+		return false
+	}
+	t, ok := w.parseTier(*tierFlag)
+	if !ok {
+		return false
+	}
+	setName, confFile, err := t.resolve(addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+		return false
+	}
+	e := infra.ACLEntry{
+		Addr:        addr,
+		Responsable: *responsable,
+		Proposito:   *proposito,
+		FechaAlta:   time.Now().Format("2006-01-02"),
+		Vencimiento: *vencimiento,
+	}
+	if err := nftAddElement(setName, addr); err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR al agregar al set nft: %v\n", err)
+		return false
+	}
+	if err := appendEntry(confFile, e); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+	}
+	fmt.Printf("  Agregado %s → %s\n", addr, setName)
+	if t.immune {
+		syncFail2banIgnoreip()
+	}
+	return true
+}
+
+func (w *Whitelist) cliAddSelf(args []string) bool {
+	fs := flag.NewFlagSet("whitelist add-self", flag.ContinueOnError)
+	tierFlag := fs.String("tier", "", "Tier: A | B")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	if _, ok := w.parseTier(*tierFlag); !ok {
+		return false
+	}
+	ip := sys.GetSSHIP()
+	if ip == "" {
+		fmt.Fprintln(os.Stderr, "  No se detectó sesión SSH activa. Usa 'add <ip> --tier ...' manualmente.")
+		return false
+	}
+	fmt.Printf("  IP detectada: %s\n", ip)
+	return w.cliAdd(append([]string{ip}, "--tier", *tierFlag))
+}
+
+func (w *Whitelist) cliList(args []string) bool {
+	fs := flag.NewFlagSet("whitelist list", flag.ContinueOnError)
+	tierFlag := fs.String("tier", "", "Tier: A | B (omitir = ambos)")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	switch strings.ToUpper(*tierFlag) {
+	case "A":
+		w.listIPs(tierA())
+	case "B":
+		w.listIPs(tierB())
+	case "":
+		w.listIPs(tierA())
+		w.listIPs(tierB())
+	default:
+		fmt.Fprintf(os.Stderr, "  ERROR: --tier debe ser A o B, no '%s'.\n", *tierFlag)
+		return false
+	}
+	return true
+}
+
+func (w *Whitelist) cliDel(args []string) bool {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "  Uso: whitelist del <ip> --tier A|B")
+		return false
+	}
+	addr := args[0]
+	fs := flag.NewFlagSet("whitelist del", flag.ContinueOnError)
+	tierFlag := fs.String("tier", "", "Tier: A | B")
+	if err := fs.Parse(args[1:]); err != nil {
+		return false
+	}
+	t, ok := w.parseTier(*tierFlag)
+	if !ok {
+		return false
+	}
+	setName, confFile, err := t.resolve(addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+		return false
+	}
+	if err := nftDeleteElement(setName, addr); err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR al eliminar del set nft: %v\n", err)
+		return false
+	}
+	if err := removeByAddr(confFile, addr); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+	}
+	fmt.Printf("  Eliminado %s de %s\n", addr, setName)
+	if t.immune {
+		syncFail2banIgnoreip()
+	}
+	return true
+}
+
+func (w *Whitelist) parseTier(s string) (tier, bool) {
+	switch strings.ToUpper(s) {
+	case "A":
+		return tierA(), true
+	case "B":
+		return tierB(), true
+	default:
+		fmt.Fprintln(os.Stderr, "  ERROR: --tier es obligatorio y debe ser A o B.")
+		return tier{}, false
+	}
 }
 
 // _ ensures the interface is satisfied at compile time.

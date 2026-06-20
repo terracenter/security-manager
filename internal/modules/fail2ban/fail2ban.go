@@ -3,12 +3,15 @@ package fail2ban
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 )
 
 // D1 — Constantes SSoT
@@ -334,6 +337,153 @@ func (f *Fail2ban) readLine(prompt string) string {
 		return f.scanner.Text()
 	}
 	return ""
+}
+
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	buscar <ip>           Diagnóstico completo: fail2ban jails + sets nftables SM-NG
+//	estado                Estado del servicio y jails activos
+//	baneadas [--jail J]   IPs baneadas (todos los jails o uno específico)
+//	geo <ip>              Geolocalización vía ipinfo.io
+func (f *Fail2ban) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "buscar", "search":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: fail2ban buscar <ip>")
+			return false
+		}
+		return f.cliBuscar(args[0])
+	case "estado", "status":
+		f.showStatus()
+		return true
+	case "baneadas", "banned":
+		return f.cliBaneadas(args)
+	case "geo":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: fail2ban geo <ip>")
+			return false
+		}
+		f.geoInfo(args[0])
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: buscar <ip>, estado, baneadas [--jail J], geo <ip>")
+		return false
+	}
+}
+
+// cliBuscar hace un diagnóstico completo de la IP: fail2ban + nftables sets SM-NG.
+func (f *Fail2ban) cliBuscar(ip string) bool {
+	fmt.Printf("\n  === Diagnóstico IP: %s ===\n\n", ip)
+
+	// 1. fail2ban — todos los jails activos
+	jails := f.activeJails()
+	if len(jails) == 0 {
+		fmt.Println("  [fail2ban] Sin jails activos.")
+	} else {
+		for _, jail := range jails {
+			out, _ := exec.Command("fail2ban-client", "status", jail).Output()
+			ips := f.parseBannedIPs(string(out))
+			baneada := false
+			for _, b := range ips {
+				if b == ip {
+					baneada = true
+					break
+				}
+			}
+			mark := "✗ libre"
+			if baneada {
+				mark = "⚠ BANEADA"
+			}
+			fmt.Printf("  [fail2ban] %-25s %s\n", jail+":", mark)
+		}
+	}
+
+	fmt.Println()
+
+	// 2–4. Sets nftables SM-NG
+	checks := []struct{ name, label string }{
+		{infra.SetBlacklist4, "Blacklist IPv4 (sm_blacklist4)"},
+		{infra.SetBlacklist6, "Blacklist IPv6 (sm_blacklist6)"},
+		{infra.SetWhitelist4, "Whitelist Tier A (sm_whitelist4)"},
+		{infra.SetWhitelist6, "Whitelist Tier A (sm_whitelist6)"},
+		{infra.SetImmune4, "Immune  Tier B (sm_immune4)"},
+		{infra.SetImmune6, "Immune  Tier B (sm_immune6)"},
+	}
+	for _, c := range checks {
+		out, err := exec.Command("nft", "list", "set", "inet", "sm", c.name).Output()
+		if err != nil {
+			fmt.Printf("  [nft] %-37s ⚠ no disponible\n", c.label+":")
+			continue
+		}
+		mark := "✗ no encontrada"
+		if strings.Contains(string(out), ip) {
+			mark = "✓ PRESENTE"
+		}
+		fmt.Printf("  [nft] %-37s %s\n", c.label+":", mark)
+	}
+
+	// 5. Catch-all: nft list ruleset
+	out, err := exec.Command("nft", "list", "ruleset").Output()
+	if err == nil {
+		var found []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, ip) {
+				found = append(found, strings.TrimSpace(line))
+			}
+		}
+		if len(found) > 0 {
+			fmt.Printf("\n  [nft] Reglas que mencionan %s:\n", ip)
+			for _, l := range found {
+				fmt.Printf("    %s\n", l)
+			}
+		}
+	}
+
+	// 6. Geolocalización
+	fmt.Println()
+	f.geoInfo(ip)
+	return true
+}
+
+// cliBaneadas lista las IPs baneadas en un jail específico o en todos.
+func (f *Fail2ban) cliBaneadas(args []string) bool {
+	fs := flag.NewFlagSet("fail2ban baneadas", flag.ContinueOnError)
+	jail := fs.String("jail", "", "Jail específico (omitir = todos)")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	jails := f.activeJails()
+	if len(jails) == 0 {
+		fmt.Println("  No hay jails activos.")
+		return true
+	}
+	if *jail != "" {
+		f.cliBannedJail(*jail)
+		return true
+	}
+	for _, j := range jails {
+		f.cliBannedJail(j)
+	}
+	return true
+}
+
+// cliBannedJail lista IPs baneadas en un jail sin paginación interactiva.
+func (f *Fail2ban) cliBannedJail(jail string) {
+	out, err := exec.Command("fail2ban-client", "status", jail).Output()
+	if err != nil {
+		fmt.Printf("  Error consultando jail %s\n", jail)
+		return
+	}
+	ips := f.parseBannedIPs(string(out))
+	if len(ips) == 0 {
+		fmt.Printf("  [%s] — 0 IPs baneadas\n", jail)
+		return
+	}
+	fmt.Printf("\n  [%s] — %d IPs baneadas\n", jail, len(ips))
+	for _, ip := range ips {
+		fmt.Printf("    %s\n", ip)
+	}
 }
 
 // Compile-time assertion

@@ -12,6 +12,7 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
 )
 
+
 // GeoIP gestiona el acceso por país (ALLOWLIST) usando sets nftables nativos (sm_geoallow4/6).
 // Fuente de rangos: ipdeny.com (zone files, un CIDR por línea).
 type GeoIP struct {
@@ -462,6 +463,146 @@ func zoneStatus(path string) string {
 		return fmt.Sprintf("✓ IPv6 (%d rangos)", len(lines))
 	}
 	return fmt.Sprintf("✓ IPv4 (%d rangos)", len(lines))
+}
+
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	add <CC...>    Agregar países a la lista de permitidos (ej: VE CO PE)
+//	del <CC>       Eliminar país de la lista
+//	list           Ver países configurados
+//	update         Descargar rangos desde ipdeny.com
+//	apply          Aplicar / recargar ruleset GeoIP
+//	reset          Resetear GeoIP (borra lista y zone files)
+//	preview        Ver vista previa del ruleset generado
+func (g *GeoIP) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "add", "agregar":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: geoip add <CC...>  (ej: geoip add VE CO PE)")
+			return false
+		}
+		return g.cliAdd(args)
+	case "del", "delete", "eliminar":
+		if len(args) == 0 {
+			fmt.Fprintln(os.Stderr, "  Uso: geoip del <CC>")
+			return false
+		}
+		return g.cliDel(args[0])
+	case "list", "listar":
+		g.listCountries()
+		return true
+	case "update", "actualizar":
+		g.updateRanges()
+		return true
+	case "apply", "aplicar":
+		fmt.Println("  [cli] Aplicando ruleset GeoIP sin confirmación interactiva...")
+		g.applyGeoIPCore()
+		return true
+	case "reset", "resetear":
+		fmt.Println("  [cli] Reseteando GeoIP sin confirmación interactiva...")
+		return g.cliReset()
+	case "preview", "vista-previa":
+		g.previewRuleset()
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: add <CC...>, del <CC>, list, update, apply, reset, preview")
+		return false
+	}
+}
+
+func (g *GeoIP) cliAdd(codes []string) bool {
+	countries, err := loadCountries()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR leyendo config: %v\n", err)
+		return false
+	}
+	existing := make(map[string]bool)
+	for _, c := range countries {
+		existing[c] = true
+	}
+	var added []string
+	for _, raw := range codes {
+		cc := strings.ToUpper(strings.TrimSpace(raw))
+		if !validCC(cc) {
+			fmt.Fprintf(os.Stderr, "  ERROR: '%s' no es un código válido — usa 2 letras (ej: VE).\n", cc)
+			return false
+		}
+		if existing[cc] {
+			fmt.Printf("  %s ya está en la lista — omitido.\n", cc)
+			continue
+		}
+		countries = append(countries, cc)
+		existing[cc] = true
+		added = append(added, cc)
+	}
+	if len(added) == 0 {
+		fmt.Println("  Sin cambios.")
+		return true
+	}
+	if err := saveCountries(countries); err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR guardando config: %v\n", err)
+		return false
+	}
+	fmt.Printf("  Agregado(s): %s\n", strings.Join(added, ", "))
+	fmt.Println("  Descargando rangos...")
+	g.updateRanges()
+	fmt.Println("  Aplicando ruleset...")
+	g.applyGeoIPCore()
+	return true
+}
+
+func (g *GeoIP) cliDel(cc string) bool {
+	cc = strings.ToUpper(strings.TrimSpace(cc))
+	countries, err := loadCountries()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR leyendo config: %v\n", err)
+		return false
+	}
+	var updated []string
+	found := false
+	for _, c := range countries {
+		if c == cc {
+			found = true
+			continue
+		}
+		updated = append(updated, c)
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "  %s no está en la lista.\n", cc)
+		return false
+	}
+	if err := saveCountries(updated); err != nil {
+		fmt.Fprintf(os.Stderr, "  ERROR guardando config: %v\n", err)
+		return false
+	}
+	fmt.Printf("  %s eliminado. Aplicando ruleset...\n", cc)
+	g.applyGeoIPCore()
+	return true
+}
+
+func (g *GeoIP) cliReset() bool {
+	if err := os.Remove(infra.AllowedCountriesFile); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "  ERROR borrando lista de países: %v\n", err)
+		return false
+	}
+	entries, err := os.ReadDir(infra.GeoIPDir)
+	if err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "  ERROR leyendo directorio GeoIP: %v\n", err)
+		return false
+	}
+	removed := 0
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".zone") || strings.HasSuffix(name, ".zone6") {
+			_ = os.Remove(infra.GeoIPDir + "/" + name)
+			removed++
+		}
+	}
+	fmt.Printf("  Zone files eliminados: %d\n", removed)
+	fmt.Println("  Recargando ruleset sin restricción geográfica...")
+	g.applyGeoIPCore()
+	return true
 }
 
 // _ ensures the interface is satisfied at compile time.

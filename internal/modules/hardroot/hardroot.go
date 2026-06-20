@@ -325,6 +325,88 @@ func orUnset(s string) string {
 	return s
 }
 
+// RunAction implementa modules.CLIModule para modo no interactivo.
+//
+//	estado        Ver estado actual
+//	harden-ssh    Establecer PermitRootLogin no + PermitEmptyPasswords no
+//	lock-root     Bloquear cuenta root (passwd -l root)
+//	sudoers       Crear /etc/sudoers.d/sm-ng
+func (h *HardRoot) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "estado", "status":
+		h.showStatus()
+		return true
+	case "harden-ssh", "hardenssh":
+		users := sudoCapableUsers()
+		if len(users) == 0 {
+			fmt.Println("  ⚠  ADVERTENCIA: sin usuario sudo/wheel alterno. Verifica antes de continuar.")
+		} else {
+			fmt.Printf("  Usuarios sudo/wheel alternativos: %s\n", strings.Join(users, ", "))
+		}
+		fmt.Println("  [cli] Aplicando PermitRootLogin no + PermitEmptyPasswords no...")
+		if err := setSshdOption("PermitRootLogin", "no"); err != nil {
+			fmt.Printf("  ERROR: %v\n", err)
+			return false
+		}
+		if err := setSshdOption("PermitEmptyPasswords", "no"); err != nil {
+			fmt.Printf("  ERROR: %v\n", err)
+			return false
+		}
+		if out, err := exec.Command("sshd", "-t").CombinedOutput(); err != nil {
+			fmt.Printf("  ERROR: sshd -t falló:\n%s\n", strings.TrimSpace(string(out)))
+			return false
+		}
+		if err := reloadSSHD(); err != nil {
+			fmt.Printf("  ADVERTENCIA: %v\n", err)
+		} else {
+			fmt.Println("  sshd recargado correctamente.")
+		}
+		return true
+	case "lock-root", "lockroot":
+		out, err := exec.Command("passwd", "-S", "root").Output()
+		if err == nil {
+			if fields := strings.Fields(string(out)); len(fields) >= 2 && fields[1] == "L" {
+				fmt.Println("  La cuenta root ya está bloqueada. Sin cambios.")
+				return true
+			}
+		}
+		fmt.Println("  [cli] Bloqueando cuenta root...")
+		out2, err2 := exec.Command("passwd", "-l", "root").CombinedOutput()
+		if err2 != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR: %s\n", strings.TrimSpace(string(out2)))
+			return false
+		}
+		fmt.Println("  Cuenta root bloqueada correctamente.")
+		return true
+	case "sudoers":
+		fmt.Println("  [cli] Configurando sudoers...")
+		tmpFile := "/tmp/sm-ng-sudoers"
+		if err := os.WriteFile(tmpFile, []byte(sudoersContent), 0o640); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			return false
+		}
+		defer os.Remove(tmpFile)
+		if out, err := exec.Command("visudo", "-c", "-f", tmpFile).CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR validación visudo: %s\n", strings.TrimSpace(string(out)))
+			return false
+		}
+		if err := os.MkdirAll(sudoersDir, 0o750); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			return false
+		}
+		if err := os.WriteFile(sudoersFile, []byte(sudoersContent), 0o440); err != nil {
+			fmt.Fprintf(os.Stderr, "  ERROR escribiendo %s: %v\n", sudoersFile, err)
+			return false
+		}
+		fmt.Printf("  %s configurado correctamente.\n", sudoersFile)
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
+		fmt.Fprintln(os.Stderr, "  Acciones: estado, harden-ssh, lock-root, sudoers")
+		return false
+	}
+}
+
 // _ ensures the interface is satisfied at compile time.
 var _ interface {
 	Order() int
