@@ -119,6 +119,12 @@ func (f *Firewall) applyBase() {
 	port80, _ := infra.ReadPort80Option()
 	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
 
+	svc := infra.DetectGlobalServices()
+	if svc.TailscaleActive {
+		fmt.Println("  [info] Tailscale detectado. Si usas subnet routing IPv6, agrega el rango")
+		fmt.Println("         fd7a:115c:a1e0::/48 a Tier B: whitelist add fd7a:115c:a1e0::/48 --tier B")
+	}
+
 	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
 		fmt.Printf("\n  ERROR: %v\n", err)
 		return
