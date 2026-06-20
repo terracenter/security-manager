@@ -39,6 +39,9 @@ const (
 	// Opciones generales del ruleset
 	OptionsFile = ConfDir + "/options.conf"
 
+	// Puertos adicionales abiertos por el operador vía CLI (allow/deny).
+	AllowedPortsFile = ConfDir + "/allowed_ports.conf"
+
 	// GeoIP
 	GeoIPDir             = ConfDir + "/geoip"
 	AllowedCountriesFile = ConfDir + "/allowed_countries.conf"
@@ -421,8 +424,113 @@ func DetectGlobalServices() GlobalServices {
 	return svc
 }
 
-// globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN.
-func globalExceptionsBlock(svc GlobalServices, port80 bool) string {
+// PortEntry es una entrada de allowed_ports.conf con metadatos de auditoría.
+// Formato persistido (pipe-delimited):
+//
+//	puerto | proto | comentario | fecha
+type PortEntry struct {
+	Port    int
+	Proto   string // "tcp" | "udp"
+	Comment string
+	Date    string
+}
+
+// String serializa la entrada al formato pipe-delimited persistido.
+func (p PortEntry) String() string {
+	return fmt.Sprintf("%d | %s | %s | %s", p.Port, p.Proto, p.Comment, p.Date)
+}
+
+// ReadPortEntries lee allowed_ports.conf. Retorna nil sin error si el archivo no existe.
+func ReadPortEntries(path string) ([]PortEntry, error) {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var entries []PortEntry
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "|")
+		if len(fields) < 2 {
+			continue
+		}
+		var port int
+		if _, err := fmt.Sscanf(strings.TrimSpace(fields[0]), "%d", &port); err != nil || port < 1 || port > 65535 {
+			continue
+		}
+		proto := strings.ToLower(strings.TrimSpace(fields[1]))
+		if proto != "tcp" && proto != "udp" {
+			continue
+		}
+		e := PortEntry{Port: port, Proto: proto}
+		if len(fields) > 2 {
+			e.Comment = strings.TrimSpace(fields[2])
+		}
+		if len(fields) > 3 {
+			e.Date = strings.TrimSpace(fields[3])
+		}
+		entries = append(entries, e)
+	}
+	return entries, sc.Err()
+}
+
+// AddPortEntry agrega una entrada a allowed_ports.conf.
+// Retorna error si ya existe una entrada con el mismo puerto y proto.
+func AddPortEntry(entry PortEntry) error {
+	existing, err := ReadPortEntries(AllowedPortsFile)
+	if err != nil {
+		return err
+	}
+	for _, e := range existing {
+		if e.Port == entry.Port && e.Proto == entry.Proto {
+			return fmt.Errorf("puerto %d/%s ya está en %s", entry.Port, entry.Proto, AllowedPortsFile)
+		}
+	}
+	f, err := os.OpenFile(AllowedPortsFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("abrir %s: %w", AllowedPortsFile, err)
+	}
+	defer f.Close()
+	_, err = fmt.Fprintln(f, entry.String())
+	return err
+}
+
+// RemovePortEntry elimina la entrada con el puerto y proto indicados de allowed_ports.conf.
+// Retorna error si la entrada no existe.
+func RemovePortEntry(port int, proto string) error {
+	existing, err := ReadPortEntries(AllowedPortsFile)
+	if err != nil {
+		return err
+	}
+	var kept []PortEntry
+	found := false
+	for _, e := range existing {
+		if e.Port == port && e.Proto == proto {
+			found = true
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if !found {
+		return fmt.Errorf("puerto %d/%s no encontrado en %s", port, proto, AllowedPortsFile)
+	}
+	var sb strings.Builder
+	for _, e := range kept {
+		sb.WriteString(e.String() + "\n")
+	}
+	return os.WriteFile(AllowedPortsFile, []byte(sb.String()), 0o644)
+}
+
+// globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN
+// y puertos adicionales abiertos por el operador vía CLI.
+func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) string {
 	var sb strings.Builder
 	if port80 {
 		sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01 (global — ACME valida desde cualquier país)\n")
@@ -433,13 +541,21 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool) string {
 	for _, rule := range svc.OpenVPNRules {
 		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
 	}
+	for _, pe := range ports {
+		comment := pe.Comment
+		if comment == "" {
+			comment = "abierto vía CLI"
+		}
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # %s\n", pe.Proto, pe.Port, comment))
+	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 
 // GenerateRuleset produce el contenido completo de sm.nft.
-// Lee whitelist/blacklist desde los archivos de config para preservar entradas entre recargas.
+// Lee whitelist/blacklist/allowed_ports desde los archivos de config para preservar entradas entre recargas.
 func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
 	svc := DetectGlobalServices()
+	allowedPorts, _ := ReadPortEntries(AllowedPortsFile)
 
 	sshComment := ""
 	if sshPort != 22 {
@@ -550,7 +666,7 @@ table inet sm {
 		SetBlacklist4, SetBlacklist6,
 		SetWhitelist4, SetWhitelist6,
 		SetImmune4, SetImmune6,
-		globalExceptionsBlock(svc, port80),
+		globalExceptionsBlock(svc, port80, allowedPorts),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
 	)

@@ -163,7 +163,91 @@ func resetGlobal(scanner *bufio.Scanner) {
 	fmt.Println("\n  ✓ Reset Global completado. El host está limpio de Security Manager NG.")
 }
 
+// handleCLI enruta argumentos CLI al módulo correspondiente.
+// Retorna 0 en éxito, 1 en error.
+func handleCLI(args []string) int {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
+		printCLIHelp()
+		return 0
+	}
+	mods := initModules()
+	modName := strings.ToLower(args[0])
+
+	// Matching flexible: exacto, luego prefijo, luego substring (igual que SM-Go).
+	var matched modules.Module
+	for _, m := range mods {
+		name := strings.ToLower(m.Name())
+		// Normalizar nombre del módulo para matching (quitar paréntesis y descripción).
+		// "Firewall (nftables)" → "firewall"
+		if idx := strings.Index(name, " "); idx > 0 {
+			name = name[:idx]
+		}
+		if name == modName {
+			matched = m
+			break
+		}
+	}
+	if matched == nil {
+		for _, m := range mods {
+			name := strings.ToLower(m.Name())
+			if strings.HasPrefix(name, modName) {
+				matched = m
+				break
+			}
+		}
+	}
+	if matched == nil {
+		for _, m := range mods {
+			name := strings.ToLower(m.Name())
+			if strings.Contains(name, modName) {
+				matched = m
+				break
+			}
+		}
+	}
+
+	if matched == nil {
+		fmt.Fprintf(os.Stderr, "  Módulo '%s' no encontrado.\n", args[0])
+		fmt.Fprintf(os.Stderr, "  Módulos disponibles: firewall, whitelist, geoip, blacklist, hardroot, ssh, fail2ban\n")
+		return 1
+	}
+
+	cli, ok := matched.(modules.CLIModule)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "  El módulo '%s' no soporta CLI aún. Usa el menú interactivo.\n", matched.Name())
+		return 1
+	}
+
+	if len(args) < 2 {
+		fmt.Fprintf(os.Stderr, "  Falta acción. Uso: security-manager-ng %s <acción> [flags]\n", args[0])
+		return 1
+	}
+
+	if ok := cli.RunAction(args[1], args[2:]...); !ok {
+		return 1
+	}
+	return 0
+}
+
+func printCLIHelp() {
+	fmt.Printf("Security Manager NG — CLI\n\n")
+	fmt.Printf("Uso: security-manager-ng <módulo> <acción> [flags]\n\n")
+	fmt.Printf("Módulos y acciones disponibles:\n\n")
+	fmt.Printf("  firewall\n")
+	fmt.Printf("    allow      --port N --proto tcp|udp [--comment C]   Abre puerto globalmente\n")
+	fmt.Printf("    deny       --port N --proto tcp|udp                  Cierra puerto\n")
+	fmt.Printf("    list-ports                                            Lista puertos abiertos\n")
+	fmt.Printf("    estado                                                Estado tabla inet sm\n")
+	fmt.Printf("    apply                                                 Aplica ruleset base\n")
+	fmt.Printf("    reset                                                 Elimina tabla inet sm\n")
+	fmt.Printf("    port80     on|off                                     Puerto 80 global (ACME)\n\n")
+	fmt.Printf("Sin argumentos: inicia el menú interactivo.\n")
+}
+
 func main() {
+	if len(os.Args) > 1 {
+		os.Exit(handleCLI(os.Args[1:]))
+	}
 	ensureNftablesEnabled()
 	mods := initModules()
 	scanner := bufio.NewScanner(os.Stdin)

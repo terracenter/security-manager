@@ -2,10 +2,12 @@ package firewall
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
@@ -191,6 +193,144 @@ func (f *Firewall) resetTable() {
 		return
 	}
 	fmt.Println("  Tabla inet sm eliminada.")
+}
+
+// RunAction implementa modules.CLIModule para modo no interactivo.
+// Uso: security-manager-ng firewall <acción> [flags]
+//
+//	allow      --port N --proto tcp|udp [--comment C]  Abre puerto globalmente (bypass GeoIP)
+//	deny       --port N --proto tcp|udp                Cierra puerto previamente abierto
+//	list-ports                                          Lista puertos en allowed_ports.conf
+//	estado | status                                     Estado de la tabla inet sm
+//	apply                                               Aplica / recarga ruleset base
+//	reset                                               Elimina tabla inet sm
+//	port80     on|off                                   Activa/desactiva excepción global puerto 80
+func (f *Firewall) RunAction(action string, args ...string) bool {
+	switch strings.ToLower(action) {
+	case "allow":
+		return f.cliAllow(args)
+	case "deny":
+		return f.cliDeny(args)
+	case "list-ports", "list-port", "listar-puertos":
+		return f.cliListPorts()
+	case "estado", "status":
+		f.showStatus()
+		return true
+	case "apply", "aplicar":
+		f.applyBase()
+		return true
+	case "reset":
+		fmt.Println("  [firewall] Eliminando tabla inet sm...")
+		out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
+		if err != nil {
+			fmt.Printf("  ERROR: %s\n", strings.TrimSpace(string(out)))
+			return false
+		}
+		fmt.Println("  [firewall] OK — tabla inet sm eliminada.")
+		return true
+	case "port80":
+		if len(args) == 0 {
+			fmt.Println("  Uso: firewall port80 on|off")
+			return false
+		}
+		switch strings.ToLower(args[0]) {
+		case "on", "true":
+			_ = infra.WritePort80Option(true)
+			fmt.Println("  [firewall] Puerto 80 global ACTIVADO. Recargando ruleset...")
+			f.applyBase()
+		case "off", "false":
+			_ = infra.WritePort80Option(false)
+			fmt.Println("  [firewall] Puerto 80 global DESACTIVADO. Recargando ruleset...")
+			f.applyBase()
+		default:
+			fmt.Printf("  Valor inválido '%s'. Usa: on | off\n", args[0])
+			return false
+		}
+		return true
+	default:
+		fmt.Printf("  Acción desconocida: '%s'\n", action)
+		fmt.Println("  Acciones disponibles: allow, deny, list-ports, estado, apply, reset, port80")
+		return false
+	}
+}
+
+func (f *Firewall) cliAllow(args []string) bool {
+	fs := flag.NewFlagSet("firewall allow", flag.ContinueOnError)
+	port := fs.Int("port", 0, "Puerto a abrir (1-65535)")
+	proto := fs.String("proto", "tcp", "Protocolo: tcp | udp")
+	comment := fs.String("comment", "", "Comentario descriptivo")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	if *port < 1 || *port > 65535 {
+		fmt.Println("  ERROR: --port es obligatorio y debe estar entre 1 y 65535.")
+		return false
+	}
+	p := strings.ToLower(*proto)
+	if p != "tcp" && p != "udp" {
+		fmt.Printf("  ERROR: --proto debe ser 'tcp' o 'udp', no '%s'.\n", *proto)
+		return false
+	}
+	entry := infra.PortEntry{
+		Port:    *port,
+		Proto:   p,
+		Comment: *comment,
+		Date:    time.Now().Format("2006-01-02"),
+	}
+	if err := infra.AddPortEntry(entry); err != nil {
+		fmt.Printf("  ERROR: %v\n", err)
+		return false
+	}
+	fmt.Printf("  [firewall] Puerto %d/%s agregado a %s.\n", *port, p, infra.AllowedPortsFile)
+	fmt.Printf("  ⚠  Acceso global (bypass GeoIP). Cierra con: firewall deny --port %d --proto %s\n", *port, p)
+	fmt.Println("  Recargando ruleset...")
+	f.applyBase()
+	return true
+}
+
+func (f *Firewall) cliDeny(args []string) bool {
+	fs := flag.NewFlagSet("firewall deny", flag.ContinueOnError)
+	port := fs.Int("port", 0, "Puerto a cerrar (1-65535)")
+	proto := fs.String("proto", "tcp", "Protocolo: tcp | udp")
+	if err := fs.Parse(args); err != nil {
+		return false
+	}
+	if *port < 1 || *port > 65535 {
+		fmt.Println("  ERROR: --port es obligatorio y debe estar entre 1 y 65535.")
+		return false
+	}
+	p := strings.ToLower(*proto)
+	if p != "tcp" && p != "udp" {
+		fmt.Printf("  ERROR: --proto debe ser 'tcp' o 'udp', no '%s'.\n", *proto)
+		return false
+	}
+	if err := infra.RemovePortEntry(*port, p); err != nil {
+		fmt.Printf("  ERROR: %v\n", err)
+		return false
+	}
+	fmt.Printf("  [firewall] Puerto %d/%s eliminado de %s.\n", *port, p, infra.AllowedPortsFile)
+	fmt.Println("  Recargando ruleset...")
+	f.applyBase()
+	return true
+}
+
+func (f *Firewall) cliListPorts() bool {
+	entries, err := infra.ReadPortEntries(infra.AllowedPortsFile)
+	if err != nil {
+		fmt.Printf("  ERROR leyendo %s: %v\n", infra.AllowedPortsFile, err)
+		return false
+	}
+	if len(entries) == 0 {
+		fmt.Println("  No hay puertos adicionales abiertos.")
+		return true
+	}
+	fmt.Printf("\n  %-8s %-6s %-30s %s\n", "PUERTO", "PROTO", "COMENTARIO", "FECHA")
+	fmt.Println("  " + strings.Repeat("─", 58))
+	for _, e := range entries {
+		fmt.Printf("  %-8d %-6s %-30s %s\n", e.Port, e.Proto, e.Comment, e.Date)
+	}
+	fmt.Println()
+	return true
 }
 
 // _ ensures the interface is satisfied at compile time.
