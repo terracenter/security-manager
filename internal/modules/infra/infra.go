@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 )
 
 // Rutas y constantes compartidas entre módulos (SSoT).
@@ -591,6 +593,24 @@ func geoRestrictedServicesBlock(ports []PortEntry) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// crowdsecSetsBlock genera las declaraciones de sets para CrowdSec si está instalado.
+func crowdsecSetsBlock() string {
+	if !crowdsec.IsInstalled() {
+		return ""
+	}
+	s4 := fmt.Sprintf("\n    set crowdsec-blacklists {\n        type ipv4_addr\n        flags interval, timeout\n    }\n")
+	s6 := fmt.Sprintf("\n    set crowdsec-blacklists6 {\n        type ipv6_addr\n        flags interval, timeout\n    }\n")
+	return s4 + s6
+}
+
+// crowdsecDropRules genera las reglas de drop para bans de CrowdSec si está instalado.
+func crowdsecDropRules() string {
+	if !crowdsec.IsInstalled() {
+		return ""
+	}
+	return "\n        # 5b · CrowdSec bans — drop antes de whitelist/immune\n        ip  saddr @crowdsec-blacklists  drop\n        ip6 saddr @crowdsec-blacklists6 drop"
+}
+
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist/allowed_ports desde los archivos de config para preservar entradas entre recargas.
 func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
@@ -642,7 +662,7 @@ delete table inet sm
 table inet sm {
 
     # ── Sets confiables (Tier A) / intocables (Tier B) / blacklist ────
-%s%s%s%s%s%s
+%s%s%s%s%s%s%s
     # ── Sets GeoIP (por país) ────────────────────────────────────────
 %s
     # ── Chain principal ──────────────────────────────────────────────
@@ -672,7 +692,7 @@ table inet sm {
         # 5 · Blacklist (antes que whitelist)
         ip  saddr @%s drop
         ip6 saddr @%s drop
-
+%s
         # 6 · Confiables (Tier A) + Intocables (Tier B) — bypass de GeoIP/puertos
         #     Tier A: fail2ban SÍ puede banearlas (no van a ignoreip).
         #     Tier B: fail2ban JAMÁS las banea (sincronizadas a ignoreip).
@@ -711,9 +731,11 @@ table inet sm {
 		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B) — bypass GeoIP + fail2ban ignoreip`, im6),
 		formatSet(SetBlacklist4, "ipv4_addr", `Bans manuales IPv4`, bl4),
 		formatSet(SetBlacklist6, "ipv6_addr", `Bans manuales IPv6`, bl6),
+		crowdsecSetsBlock(),
 		geoipSetsBlock(geoip),
 		tailscaleRule,
 		SetBlacklist4, SetBlacklist6,
+		crowdsecDropRules(),
 		SetWhitelist4, SetWhitelist6,
 		SetImmune4, SetImmune6,
 		globalExceptionsBlock(svc, port80, globalPorts),
