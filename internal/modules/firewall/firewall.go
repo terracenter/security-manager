@@ -11,6 +11,7 @@ import (
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 // Firewall gestiona el ruleset nftables declarativo (tabla inet sm).
@@ -97,6 +98,21 @@ func (f *Firewall) togglePort80() {
 
 // applyBase genera el ruleset base, valida la sintaxis y lo aplica con safeapply.
 func (f *Firewall) applyBase() {
+	// FASE 1: Validar prereqs (nftables, etc.)
+	if err := sys.CheckAndInstallPrereqs(f.readLine); err != nil {
+		fmt.Printf("\n  ERROR: %v\n", err)
+		return
+	}
+
+	// FASE 2: Wizard de servicios en primera instalación
+	isFirstInstall := !fileExists(infra.RulesetFile)
+	if isFirstInstall {
+		if err := f.runServiceWizard(); err != nil {
+			fmt.Printf("\n  ERROR en wizard de servicios: %v\n", err)
+			return
+		}
+	}
+
 	// Si el host tiene IP pública y la opción aún no está configurada → preguntar al usuario.
 	if infra.HasPublicIP() {
 		if _, found := infra.ReadPort80Option(); !found {
@@ -337,6 +353,80 @@ func (f *Firewall) cliListPorts() bool {
 	}
 	fmt.Println()
 	return true
+}
+
+// readLine lee una línea del scanner y la retorna.
+func (f *Firewall) readLine(prompt string) string {
+	fmt.Print(prompt)
+	if !f.scanner.Scan() {
+		return ""
+	}
+	return strings.TrimSpace(f.scanner.Text())
+}
+
+// runServiceWizard detecta servicios activos y pregunta cuáles permitir.
+func (f *Firewall) runServiceWizard() error {
+	fmt.Println("\n  Detectando servicios activos...")
+	services, err := sys.DetectListeningServices()
+	if err != nil {
+		return err
+	}
+
+	if len(services) == 0 {
+		fmt.Println("  No se detectaron servicios activos.")
+		return nil
+	}
+
+	// Crear archivo allowed_ports.conf
+	var entries []string
+	for _, svc := range services {
+		// Puerto 22 (SSH) → siempre GEO, skip wizard
+		if svc.Port == 22 {
+			continue
+		}
+		// Puerto 80 (HTTP) → siempre GLOBAL, skip wizard
+		if svc.Port == 80 {
+			continue
+		}
+
+		procName := svc.ProcessName
+		if procName == "" {
+			procName = "?"
+		}
+
+		// Preguntar si permitir el puerto
+		resp := f.readLine(fmt.Sprintf("  Puerto %d (%s) — ¿Permitir? [s/N]: ", svc.Port, procName))
+		if strings.ToLower(resp) != "s" {
+			continue
+		}
+
+		// Preguntar tier
+		tierResp := f.readLine("  ¿GLOBAL (mundo) o GEO-restringido? [G/R]: ")
+		tier := "GEO"
+		if strings.ToLower(tierResp) == "g" {
+			tier = "GLOBAL"
+		}
+
+		entry := fmt.Sprintf("%d | %s | %s | auto-detect | %s", svc.Port, svc.Proto, tier, time.Now().Format("2006-01-02"))
+		entries = append(entries, entry)
+	}
+
+	// Escribir en allowed_ports.conf
+	if len(entries) > 0 {
+		content := strings.Join(entries, "\n") + "\n"
+		if err := os.WriteFile(infra.AllowedPortsFile, []byte(content), 0o640); err != nil {
+			return err
+		}
+		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
+	}
+
+	return nil
+}
+
+// fileExists verifica si un archivo existe.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // _ ensures the interface is satisfied at compile time.
