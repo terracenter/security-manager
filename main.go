@@ -78,15 +78,15 @@ func printMenu(mods []modules.Module) {
 	fmt.Printf("  Versión: %s\n", Version)
 	fmt.Printf("  Usuario activo: %s\n", sys.CurrentUser())
 
-	smStr := "✗ inactiva"
+	smStr := "✗ inactivo"
 	if st.smActive {
-		smStr = "✓ activa"
+		smStr = "✓ activo"
 	}
 	geoStr := "—"
 	if len(st.geoCountries) > 0 {
 		geoStr = strings.Join(st.geoCountries, " ")
 	}
-	fmt.Printf("  inet sm: %s  |  SSH: :%d  |  GeoIP: %s  |  WL: %d  |  BL: %d\n\n",
+	fmt.Printf("  Firewall: %s  |  SSH: :%d  |  GeoIP: %s  |  WL: %d  |  BL: %d\n\n",
 		smStr, st.sshPort, geoStr, st.wlCount, st.blCount)
 
 	for i, m := range mods {
