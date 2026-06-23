@@ -72,12 +72,9 @@ func filterMissingPackages(family string, pkgs []string) []string {
 func isPackageInstalled(family string, pkg string) bool {
 	switch family {
 	case "debian", "ubuntu":
-		// Debian/Ubuntu: dpkg -l <pkg> | grep ^ii
-		out, err := RunCmdOut("dpkg", "-l", pkg)
-		if err != nil {
-			return false
-		}
-		return strings.HasPrefix(out, "ii")
+		// Debian/Ubuntu: dpkg-query -W -f='${Status}'
+		out, err := RunCmdOut("dpkg-query", "-W", "-f=${Status}", pkg)
+		return err == nil && strings.Contains(out, "install ok installed")
 	case "rhel":
 		// RHEL-like: rpm -q <pkg>
 		_, err := RunCmdOut("rpm", "-q", pkg)
