@@ -6,19 +6,20 @@ import (
 	"strings"
 )
 
-// CheckAndInstallPrereqs verifica que los paquetes requeridos están instalados.
+// CheckAndInstallPrereqs verifica que los paquetes obligatorios están instalados (solo nftables).
 // Si faltan, muestra la lista y solicita confirmación del usuario para instalar.
 // Retorna error si el usuario rechaza o la instalación falla.
-// Instala: nftables, crowdsec, crowdsec-firewall-bouncer-nftables.
+// Nota: CrowdSec es opcional y se maneja de forma separada en CheckAndInstallCrowdSec().
 func CheckAndInstallPrereqs(readLine func(string) string) error {
 	distro := DetectDistro()
 
+	// Solo nftables es obligatorio — CrowdSec es opcional
 	var requiredPkgs []string
 	switch distro.Family {
 	case "debian", "ubuntu":
-		requiredPkgs = []string{"nftables", "crowdsec", "crowdsec-firewall-bouncer-nftables"}
+		requiredPkgs = []string{"nftables"}
 	case "rhel":
-		requiredPkgs = []string{"nftables", "crowdsec", "crowdsec-firewall-bouncer-nftables"}
+		requiredPkgs = []string{"nftables"}
 	default:
 		return fmt.Errorf("distribución no soportada: %s", distro.ID)
 	}
@@ -28,30 +29,49 @@ func CheckAndInstallPrereqs(readLine func(string) string) error {
 		return nil
 	}
 
-	// Si CrowdSec o su bouncer están en la lista de faltantes, registrar repo Packagecloud
-	hasCrowdSec := false
-	for _, pkg := range missingPkgs {
-		if pkg == "crowdsec" || pkg == "crowdsec-firewall-bouncer-nftables" {
-			hasCrowdSec = true
-			break
-		}
-	}
-
-	if hasCrowdSec {
-		fmt.Println("Registrando repositorio oficial CrowdSec (Packagecloud)...")
-		if err := registerCrowdSecRepo(distro.Family); err != nil {
-			return fmt.Errorf("error registrando repo CrowdSec: %v", err)
-		}
-	}
-
 	if !OfferInstall(readLine, missingPkgs...) {
 		return fmt.Errorf("paquetes requeridos no instalados")
 	}
 
-	if hasCrowdSec {
-		if err := configureCrowdSecPostInstall(distro.Family); err != nil {
-			return fmt.Errorf("error configurando CrowdSec post-install: %v", err)
-		}
+	return nil
+}
+
+// CheckAndInstallCrowdSec verifica e instala CrowdSec de forma opcional.
+// Si CrowdSec no está instalado, muestra un mensaje informativo (no bloqueante).
+// Si el usuario desea instalarlo, registra el repositorio oficial Packagecloud y procede.
+func CheckAndInstallCrowdSec(readLine func(string) string) error {
+	distro := DetectDistro()
+
+	crowdSecPkgs := []string{"crowdsec", "crowdsec-firewall-bouncer-nftables"}
+	missingPkgs := filterMissingPackages(distro.Family, crowdSecPkgs)
+
+	// Si todos los paquetes CrowdSec están instalados, no hacer nada
+	if len(missingPkgs) == 0 {
+		return nil
+	}
+
+	// CrowdSec no está instalado — informar pero no bloquear
+	fmt.Println("  [info] CrowdSec no instalado — integración avanzada no disponible.")
+	fmt.Print("  ¿Instalar CrowdSec ahora? [s/N]: ")
+	response := readLine("")
+	if !strings.EqualFold(strings.TrimSpace(response), "s") {
+		return nil // Usuario rechazó, no es error
+	}
+
+	// Usuario aceptó instalar CrowdSec
+	fmt.Println("Registrando repositorio oficial CrowdSec (Packagecloud)...")
+	if err := registerCrowdSecRepo(distro.Family); err != nil {
+		fmt.Printf("  Advertencia: no se pudo registrar repo CrowdSec: %v\n", err)
+		return nil // No bloquear aunque falle el repo
+	}
+
+	if !OfferInstall(readLine, missingPkgs...) {
+		fmt.Println("  [info] CrowdSec no instalado — operando en modo nftables puro.")
+		return nil
+	}
+
+	if err := configureCrowdSecPostInstall(distro.Family); err != nil {
+		fmt.Printf("  Advertencia: error configurando CrowdSec post-install: %v\n", err)
 	}
 
 	return nil
