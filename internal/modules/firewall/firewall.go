@@ -637,6 +637,12 @@ func (f *Firewall) runServiceWizard() error {
 	if len(entries) > 0 {
 		content := strings.Join(entries, "\n") + "\n"
 		if err := os.WriteFile(infra.AllowedPortsFile, []byte(content), 0o640); err != nil {
+			f.logger.Error(
+				fmt.Sprintf("No se pudo guardar la configuración de puertos en %s.", infra.AllowedPortsFile),
+				fmt.Sprintf("%v", err),
+			)
+			fmt.Println("     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.")
+			fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
 			return err
 		}
 		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
