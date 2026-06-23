@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 )
@@ -192,6 +193,27 @@ func ACLAddresses(entries []ACLEntry) []string {
 		addrs = append(addrs, e.Addr)
 	}
 	return addrs
+}
+
+// AppendACLEntry agrega una entrada ACL al archivo especificado.
+// Crea el archivo si no existe. Formato: addr | responsable | proposito | fecha
+func AppendACLEntry(path string, e ACLEntry) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	line := fmt.Sprintf("%s | %s | %s | %s\n",
+		e.Addr,
+		e.Responsable,
+		e.Proposito,
+		time.Now().Format("2006-01-02"),
+	)
+	_, err = f.WriteString(line)
+	return err
 }
 
 // privateRanges cubre RFC 1918, CGNAT (RFC 6598), loopback, link-local y ULA IPv6 (RFC 4193).

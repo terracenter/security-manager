@@ -133,6 +133,35 @@ func (f *Firewall) applyBase() {
 		return
 	}
 
+	// SSH IP Guard: verificar que la IP SSH activa está en la lista blanca/immune
+	if sshIP := detectSSHClientIP(); sshIP != "" {
+		if !ipExistsInACL(sshIP) {
+			fmt.Printf("\n  ⚠️  Tu IP de conexión SSH (%s) no está en la lista blanca.\n", sshIP)
+			fmt.Println("      Si aplicas el firewall sin registrarla, perderás acceso al servidor.")
+			fmt.Print("\n  ¿Agregar como IMMUNE (Tier B) ahora? [S/n]: ")
+			f.scanner.Scan()
+			resp := strings.ToLower(strings.TrimSpace(f.scanner.Text()))
+			if resp == "s" {
+				entry := infra.ACLEntry{
+					Addr:        sshIP,
+					Responsable: "auto",
+					Proposito:   "IP de sesión SSH — agregada automáticamente por firewall apply",
+				}
+				if err := infra.AppendACLEntry(infra.Immune4File, entry); err != nil {
+					f.logger.Error("No se pudo agregar la IP a la lista immune.", fmt.Sprintf("%v", err))
+					return
+				}
+				fmt.Printf("  ✓ %s agregada como IMMUNE (Tier B).\n", sshIP)
+			} else {
+				fmt.Printf("\n  ✗ No es posible aplicar el firewall sin registrar tu IP de acceso.\n")
+				fmt.Printf("    Agrégala primero:\n")
+				fmt.Printf("      security-manager-ng whitelist add %s --tier B\n", sshIP)
+				fmt.Printf("    Luego vuelve a ejecutar [1] Aplicar / recargar ruleset base.\n\n")
+				return
+			}
+		}
+	}
+
 	// FASE 2: Wizard de servicios en primera instalación
 	isFirstInstall := !fileExists(infra.RulesetFile)
 	if isFirstInstall {
@@ -616,6 +645,37 @@ func fileExists(path string) bool {
 // isTerminal verifica si un file descriptor es un terminal.
 func isTerminal(f *os.File) bool {
 	return exec.Command("test", "-t", fmt.Sprintf("%d", f.Fd())).Run() == nil
+}
+
+// detectSSHClientIP extrae la IP del cliente SSH desde $SSH_CLIENT.
+// Formato: "IP puerto_origen puerto_destino"
+// Retorna "" si no hay $SSH_CLIENT (ejecución local).
+func detectSSHClientIP() string {
+	if v := os.Getenv("SSH_CLIENT"); v != "" {
+		fields := strings.Fields(v)
+		if len(fields) > 0 {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// ipExistsInACL verifica si la IP está en alguno de los archivos ACL.
+// Busca en immune4.conf, immune6.conf, whitelist4.conf, whitelist6.conf.
+func ipExistsInACL(ip string) bool {
+	files := []string{infra.Immune4File, infra.Immune6File, infra.Whitelist4File, infra.Whitelist6File}
+	for _, f := range files {
+		entries, err := infra.ReadACLEntries(f)
+		if err != nil {
+			continue
+		}
+		for _, addr := range infra.ACLAddresses(entries) {
+			if addr == ip {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // _ ensures the interface is satisfied at compile time.
