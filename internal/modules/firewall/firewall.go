@@ -582,6 +582,15 @@ func (f *Firewall) runServiceWizard() error {
 	fmt.Println("\n  Detectando servicios activos...")
 	services, err := sys.DetectListeningServices()
 	if err != nil {
+		f.logger.Error("No se pudo detectar los servicios activos del sistema.", fmt.Sprintf("%v", err))
+		fmt.Println("     → Verifica que 'ss' (paquete iproute2) esté instalado: sudo apt install iproute2")
+		fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+		resp := f.readLine("\n  ¿Continuar la instalación sin detección automática de servicios? [s/N]: ")
+		if strings.ToLower(strings.TrimSpace(resp)) == "s" {
+			fmt.Println("  Continuando sin wizard. Añade puertos manualmente con:")
+			fmt.Println("    security-manager-ng firewall allow --port <N> --proto tcp|udp")
+			return nil
+		}
 		return err
 	}
 
