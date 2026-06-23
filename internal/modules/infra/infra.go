@@ -427,20 +427,29 @@ func DetectGlobalServices() GlobalServices {
 // PortEntry es una entrada de allowed_ports.conf con metadatos de auditoría.
 // Formato persistido (pipe-delimited):
 //
-//	puerto | proto | comentario | fecha
+//	puerto | proto | tier | comentario | fecha
+// tier: "GLOBAL" (stage 7a, bypass GeoIP) | "GEO" (stage 8, post-GeoIP)
 type PortEntry struct {
 	Port    int
 	Proto   string // "tcp" | "udp"
+	Tier    string // "GLOBAL" | "GEO"
 	Comment string
 	Date    string
 }
 
 // String serializa la entrada al formato pipe-delimited persistido.
 func (p PortEntry) String() string {
-	return fmt.Sprintf("%d | %s | %s | %s", p.Port, p.Proto, p.Comment, p.Date)
+	tier := p.Tier
+	if tier == "" {
+		tier = "GEO" // default seguro
+	}
+	return fmt.Sprintf("%d | %s | %s | %s | %s", p.Port, p.Proto, tier, p.Comment, p.Date)
 }
 
 // ReadPortEntries lee allowed_ports.conf. Retorna nil sin error si el archivo no existe.
+// Soporta dos formatos:
+//   Nuevo: puerto | proto | tier | comentario | fecha
+//   Viejo: puerto | proto | comentario | fecha (retrocompatibilidad — tier defaults a GEO)
 func ReadPortEntries(path string) ([]PortEntry, error) {
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
@@ -469,12 +478,27 @@ func ReadPortEntries(path string) ([]PortEntry, error) {
 		if proto != "tcp" && proto != "udp" {
 			continue
 		}
-		e := PortEntry{Port: port, Proto: proto}
+		e := PortEntry{Port: port, Proto: proto, Tier: "GEO"} // default seguro
+
+		// Detectar formato: si campo 2 es GLOBAL/GEO → formato nuevo, si no → formato viejo
 		if len(fields) > 2 {
-			e.Comment = strings.TrimSpace(fields[2])
-		}
-		if len(fields) > 3 {
-			e.Date = strings.TrimSpace(fields[3])
+			field2 := strings.ToUpper(strings.TrimSpace(fields[2]))
+			if field2 == "GLOBAL" || field2 == "GEO" {
+				// Formato nuevo: puerto | proto | tier | comentario | fecha
+				e.Tier = field2
+				if len(fields) > 3 {
+					e.Comment = strings.TrimSpace(fields[3])
+				}
+				if len(fields) > 4 {
+					e.Date = strings.TrimSpace(fields[4])
+				}
+			} else {
+				// Formato viejo: puerto | proto | comentario | fecha
+				e.Comment = field2
+				if len(fields) > 3 {
+					e.Date = strings.TrimSpace(fields[3])
+				}
+			}
 		}
 		entries = append(entries, e)
 	}
@@ -551,11 +575,37 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) s
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// geoRestrictedServicesBlock genera reglas de puertos restringidos por GeoIP (stage 8).
+func geoRestrictedServicesBlock(ports []PortEntry) string {
+	if len(ports) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, pe := range ports {
+		comment := pe.Comment
+		if comment == "" {
+			comment = "restringido por país"
+		}
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # %s\n", pe.Proto, pe.Port, comment))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist/allowed_ports desde los archivos de config para preservar entradas entre recargas.
 func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
 	svc := DetectGlobalServices()
-	allowedPorts, _ := ReadPortEntries(AllowedPortsFile)
+	allPorts, _ := ReadPortEntries(AllowedPortsFile)
+
+	// Separar puertos por tier
+	var globalPorts, geoPorts []PortEntry
+	for _, p := range allPorts {
+		if strings.EqualFold(p.Tier, "GLOBAL") {
+			globalPorts = append(globalPorts, p)
+		} else {
+			geoPorts = append(geoPorts, p)
+		}
+	}
 
 	sshComment := ""
 	if sshPort != 22 {
@@ -642,6 +692,7 @@ table inet sm {
         #     (El puerto 80 está en stage 7a, global, solo para Let's Encrypt HTTP-01.)
         tcp dport %d accept%s
         tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
+%s
         icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
@@ -666,7 +717,8 @@ table inet sm {
 		SetBlacklist4, SetBlacklist6,
 		SetWhitelist4, SetWhitelist6,
 		SetImmune4, SetImmune6,
-		globalExceptionsBlock(svc, port80, allowedPorts),
+		globalExceptionsBlock(svc, port80, globalPorts),
+		geoRestrictedServicesBlock(geoPorts),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
 	)
