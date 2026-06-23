@@ -166,7 +166,7 @@ func (f *Firewall) applyBase() {
 	isFirstInstall := !fileExists(infra.RulesetFile)
 	if isFirstInstall {
 		if err := f.runServiceWizard(); err != nil {
-			f.logger.Error("No se pudo completar el wizard de servicios.", fmt.Sprintf("%v", err))
+			f.logger.Technical(fmt.Sprintf("wizard abortado: %v", err))
 			return
 		}
 	}
