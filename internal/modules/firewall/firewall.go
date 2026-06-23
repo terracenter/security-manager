@@ -280,6 +280,7 @@ func (f *Firewall) cliAllow(args []string) bool {
 	fs := flag.NewFlagSet("firewall allow", flag.ContinueOnError)
 	port := fs.Int("port", 0, "Puerto a abrir (1-65535)")
 	proto := fs.String("proto", "tcp", "Protocolo: tcp | udp")
+	tier := fs.String("tier", "", "Tier: global | geo (vacío = preguntar interactivamente o default geo)")
 	comment := fs.String("comment", "", "Comentario descriptivo")
 	if err := fs.Parse(args); err != nil {
 		return false
@@ -293,9 +294,27 @@ func (f *Firewall) cliAllow(args []string) bool {
 		fmt.Printf("  ERROR: --proto debe ser 'tcp' o 'udp', no '%s'.\n", *proto)
 		return false
 	}
+
+	// Determinar tier: interactivo si stdin es terminal, si no usar flag o default
+	tierValue := "GEO" // default seguro
+	if *tier != "" {
+		tierValue = strings.ToUpper(*tier)
+		if tierValue != "GLOBAL" && tierValue != "GEO" {
+			fmt.Printf("  ERROR: --tier debe ser 'global' o 'geo', no '%s'.\n", *tier)
+			return false
+		}
+	} else if isTerminal(os.Stdin) {
+		// Preguntar interactivamente
+		resp := f.readLine("  ¿Acceso GLOBAL (mundo) o GEO-restringido? [G/R]: ")
+		if strings.ToLower(resp) == "g" {
+			tierValue = "GLOBAL"
+		}
+	}
+
 	entry := infra.PortEntry{
 		Port:    *port,
 		Proto:   p,
+		Tier:    tierValue,
 		Comment: *comment,
 		Date:    time.Now().Format("2006-01-02"),
 	}
@@ -303,8 +322,13 @@ func (f *Firewall) cliAllow(args []string) bool {
 		fmt.Printf("  ERROR: %v\n", err)
 		return false
 	}
-	fmt.Printf("  [firewall] Puerto %d/%s agregado a %s.\n", *port, p, infra.AllowedPortsFile)
-	fmt.Printf("  ⚠  Acceso global (bypass GeoIP). Cierra con: firewall deny --port %d --proto %s\n", *port, p)
+	fmt.Printf("  [firewall] Puerto %d/%s (%s) agregado a %s.\n", *port, p, tierValue, infra.AllowedPortsFile)
+	if tierValue == "GLOBAL" {
+		fmt.Printf("  ✓ Acceso global (bypass GeoIP).\n")
+	} else {
+		fmt.Printf("  ✓ Acceso GEO-restringido (solo países configurados).\n")
+	}
+	fmt.Printf("  Cierra con: firewall deny --port %d --proto %s\n", *port, p)
 	fmt.Println("  Recargando ruleset...")
 	f.applyBase()
 	return true
@@ -427,6 +451,11 @@ func (f *Firewall) runServiceWizard() error {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// isTerminal verifica si un file descriptor es un terminal.
+func isTerminal(f *os.File) bool {
+	return exec.Command("test", "-t", fmt.Sprintf("%d", f.Fd())).Run() == nil
 }
 
 // _ ensures the interface is satisfied at compile time.
