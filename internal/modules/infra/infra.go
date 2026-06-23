@@ -692,8 +692,7 @@ table inet sm {
         #     (El puerto 80 está en stage 7a, global, solo para Let's Encrypt HTTP-01.)
         tcp dport %d accept%s
         tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
-%s
-        icmp   type echo-request limit rate 10/second accept
+%s        icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
         # 9 · Default DROP
@@ -718,9 +717,9 @@ table inet sm {
 		SetWhitelist4, SetWhitelist6,
 		SetImmune4, SetImmune6,
 		globalExceptionsBlock(svc, port80, globalPorts),
-		geoRestrictedServicesBlock(geoPorts),
 		geoipRulesBlock(geoip),
 		sshPort, sshComment,
+		geoRestrictedServicesBlock(geoPorts),
 	)
 }
 
