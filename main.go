@@ -130,7 +130,7 @@ func resetGlobal(scanner *bufio.Scanner, logger *sys.SMLogger) {
 	}
 
 	fmt.Println("\n  [reset] Ejecutando nft delete table inet sm...")
-	if out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
+	if _, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
 		logger.Error("No se pudo eliminar la tabla inet sm.", fmt.Sprintf("%v", err))
 	} else {
 		fmt.Println("  [reset] OK — tabla inet sm eliminada.")
