@@ -275,7 +275,7 @@ func (f *Firewall) showStatus() {
 	// Parser mínimo del output de nft
 	chains, sets := parseNftStatus(string(out))
 
-	fmt.Println("  ✓ inet sm: ACTIVA")
+	fmt.Println("  ✓ Firewall: ACTIVO")
 	fmt.Println()
 
 	if len(chains) > 0 {
