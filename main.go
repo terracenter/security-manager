@@ -54,9 +54,9 @@ func collectStatus() sysStatus {
 	return s
 }
 
-func initModules() []modules.Module {
+func initModules(logger *sys.SMLogger) []modules.Module {
 	mods := []modules.Module{
-		firewall.New(),
+		firewall.New(logger),
 		whitelist.New(),
 		geoip.New(),
 		blacklist.New(),
@@ -186,12 +186,12 @@ func resetGlobal(scanner *bufio.Scanner) {
 
 // handleCLI enruta argumentos CLI al módulo correspondiente.
 // Retorna 0 en éxito, 1 en error.
-func handleCLI(args []string) int {
+func handleCLI(args []string, logger *sys.SMLogger) int {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		printCLIHelp()
 		return 0
 	}
-	mods := initModules()
+	mods := initModules(logger)
 	modName := strings.ToLower(args[0])
 
 	// Matching flexible: exacto, luego prefijo, luego substring (igual que SM-Go).
@@ -311,11 +311,14 @@ func printCLIHelp() {
 }
 
 func main() {
+	logger := sys.NewLogger()
+	defer logger.Close()
+
 	if len(os.Args) > 1 {
-		os.Exit(handleCLI(os.Args[1:]))
+		os.Exit(handleCLI(os.Args[1:], logger))
 	}
 	ensureNftablesEnabled()
-	mods := initModules()
+	mods := initModules(logger)
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		printMenu(mods)

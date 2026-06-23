@@ -17,10 +17,14 @@ import (
 // Firewall gestiona el ruleset nftables declarativo (tabla inet sm).
 type Firewall struct {
 	scanner *bufio.Scanner
+	logger  *sys.SMLogger
 }
 
-func New() *Firewall {
-	return &Firewall{scanner: bufio.NewScanner(os.Stdin)}
+func New(logger *sys.SMLogger) *Firewall {
+	return &Firewall{
+		scanner: bufio.NewScanner(os.Stdin),
+		logger:  logger,
+	}
 }
 
 func (f *Firewall) Order() int   { return 1 }
@@ -187,16 +191,142 @@ func (f *Firewall) applyBase() {
 	infra.EnsureSmNftPersistence()
 }
 
-// showStatus muestra el estado de la tabla inet sm.
+// showStatus muestra un resumen del estado de la tabla inet sm.
+// Si no existe → mensaje amigable.
+// Si existe → resumen parseable de cadenas, sets y reglas.
 func (f *Firewall) showStatus() {
 	fmt.Println()
 	out, err := exec.Command("nft", "list", "table", "inet", "sm").CombinedOutput()
 	if err != nil {
-		fmt.Printf("  La tabla inet sm no existe o nft no está disponible:\n  %s\n",
-			strings.TrimSpace(string(out)))
+		errMsg := strings.TrimSpace(string(out))
+		// Distinguir si es "tabla no existe" o "nft no disponible"
+		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "no such table") {
+			fmt.Println("  ✗ inet sm: no activa — el firewall no está aplicado.")
+			fmt.Println("     → Usa [1] Aplicar / recargar ruleset base para activarlo.")
+		} else {
+			fmt.Println("  ✗ nft no disponible — verifica que nftables está instalado.")
+			fmt.Println("     → Ejecuta: sudo apt install nftables")
+		}
+		if f.logger != nil {
+			f.logger.Technical(errMsg)
+		}
 		return
 	}
-	fmt.Println(string(out))
+
+	// Parser mínimo del output de nft
+	chains, sets := parseNftStatus(string(out))
+
+	fmt.Println("  ✓ inet sm: ACTIVA")
+	fmt.Println()
+
+	if len(chains) > 0 {
+		fmt.Println("  Cadenas:")
+		for name, info := range chains {
+			fmt.Printf("    %-12s policy:%-8s — %d reglas\n", name, info.policy, info.ruleCount)
+		}
+		fmt.Println()
+	}
+
+	if len(sets) > 0 {
+		fmt.Println("  Sets:")
+		for name, count := range sets {
+			if count == 0 {
+				fmt.Printf("    %-20s (vacío)\n", name)
+			} else {
+				fmt.Printf("    %-20s %d entradas\n", name, count)
+			}
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("  Detalles técnicos → /var/log/security-manager-ng.log")
+	if f.logger != nil {
+		f.logger.Technical(string(out))
+	}
+}
+
+// parseNftStatus extrae información mínima del output de "nft list table inet sm".
+// Retorna: map[nombre]chainInfo (cadenas), map[nombre]count (sets).
+type chainInfo struct {
+	policy    string
+	ruleCount int
+}
+
+func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
+	chains := make(map[string]chainInfo)
+	sets := make(map[string]int)
+
+	lines := strings.Split(nftOutput, "\n")
+	var inChain bool
+	var chainName string
+	var ruleCount int
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Detectar inicio de cadena: "chain input {"
+		if strings.HasPrefix(trimmed, "chain ") && strings.HasSuffix(trimmed, "{") {
+			inChain = true
+			chainName = strings.Fields(trimmed)[1]
+			ruleCount = 0
+
+			// Extraer policy: "policy drop" o "policy accept"
+			policy := "accept"
+			if i+1 < len(lines) {
+				nextLine := strings.TrimSpace(lines[i+1])
+				if strings.Contains(nextLine, "policy") {
+					parts := strings.Fields(nextLine)
+					for j, p := range parts {
+						if p == "policy" && j+1 < len(parts) {
+							policy = strings.TrimSuffix(parts[j+1], ";")
+							break
+						}
+					}
+				}
+			}
+			chains[chainName] = chainInfo{policy: policy, ruleCount: 0}
+			continue
+		}
+
+		// Contar reglas dentro de cadena (líneas que no sean {, }, type, #)
+		if inChain {
+			if strings.HasPrefix(trimmed, "}") {
+				inChain = false
+				info := chains[chainName]
+				info.ruleCount = ruleCount
+				chains[chainName] = info
+				continue
+			}
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "type") &&
+				!strings.HasPrefix(trimmed, "policy") && trimmed != "{" && trimmed != "}" {
+				ruleCount++
+			}
+		}
+
+		// Detectar sets: "set sm_whitelist4 {"
+		if strings.HasPrefix(trimmed, "set ") && strings.HasSuffix(trimmed, "{") {
+			setName := strings.Fields(trimmed)[1]
+			setCount := 0
+
+			// Contar elementos dentro del set
+			for j := i + 1; j < len(lines); j++ {
+				nextLine := strings.TrimSpace(lines[j])
+				if strings.HasPrefix(nextLine, "}") {
+					break
+				}
+				if strings.HasPrefix(nextLine, "elements = ") || strings.HasPrefix(nextLine, "elements=") {
+					// Parseo muy simple: contar comillas, cada elemento dentro está entre comillas
+					elementsPart := strings.TrimPrefix(nextLine, "elements = ")
+					elementsPart = strings.TrimPrefix(elementsPart, "elements=")
+					setCount = strings.Count(elementsPart, `"`) / 2 // cada elemento = 2 comillas
+					break
+				}
+			}
+			sets[setName] = setCount
+		}
+	}
+
+	return chains, sets
 }
 
 // resetTable ejecuta delete table inet sm tras confirmación del operador.
