@@ -97,7 +97,7 @@ func printMenu(mods []modules.Module) {
 	fmt.Print("\n  Selección: ")
 }
 
-func ensureNftablesEnabled() {
+func ensureNftablesEnabled(logger *sys.SMLogger) {
 	// Solo habilitar para boot — NO iniciar (start recarga /etc/nftables.conf y borra inet sm).
 	// nftables.service es oneshot en Ubuntu/Debian: queda inactive(dead) después de cargar su config.
 	// SM-NG gestiona su propia tabla inet sm — no depender del estado del servicio.
@@ -107,11 +107,12 @@ func ensureNftablesEnabled() {
 	}
 	fmt.Println("  [init] Habilitando nftables.service para arranque automático...")
 	if out, err := exec.Command("systemctl", "enable", "nftables").CombinedOutput(); err != nil {
-		fmt.Printf("  WARN: systemctl enable nftables — %v: %s\n", err, strings.TrimSpace(string(out)))
+		logger.Warn(fmt.Sprintf("No se pudo habilitar nftables.service para arranque automático: %v", err))
+		logger.Technical(strings.TrimSpace(string(out)))
 	}
 }
 
-func resetGlobal(scanner *bufio.Scanner) {
+func resetGlobal(scanner *bufio.Scanner, logger *sys.SMLogger) {
 	fmt.Println("\n  ⚠️  ADVERTENCIA: Reset Global eliminará la tabla nftables inet sm de este host.")
 	fmt.Print("  ¿Continuar? (s/n): ")
 	scanner.Scan()
@@ -129,15 +130,15 @@ func resetGlobal(scanner *bufio.Scanner) {
 	}
 
 	fmt.Println("\n  [reset] Ejecutando nft delete table inet sm...")
-	if _, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
-		fmt.Printf("  ERROR: nft delete table inet sm — %v\n", err)
+	if out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
+		logger.Error("No se pudo eliminar la tabla inet sm.", fmt.Sprintf("%v", err))
 	} else {
 		fmt.Println("  [reset] OK — tabla inet sm eliminada.")
 	}
 
 	fmt.Println("  [reset] Borrando /etc/fail2ban/jail.d/sm-ng-whitelist.conf...")
 	if _, err := exec.Command("rm", "-f", "/etc/fail2ban/jail.d/sm-ng-whitelist.conf").CombinedOutput(); err != nil {
-		fmt.Printf("  ERROR: rm sm-ng-whitelist.conf — %v\n", err)
+		logger.Error("No se pudo eliminar la configuración de fail2ban.", fmt.Sprintf("%v", err))
 	} else {
 		fmt.Println("  [reset] OK — archivo de ignoreip eliminado.")
 	}
@@ -154,7 +155,7 @@ func resetGlobal(scanner *bufio.Scanner) {
 	if strings.EqualFold(strings.TrimSpace(scanner.Text()), "s") {
 		fmt.Println("  [reset] Purgando /etc/security-manager/...")
 		if _, err := exec.Command("rm", "-rf", "/etc/security-manager").CombinedOutput(); err != nil {
-			fmt.Printf("  ERROR: rm /etc/security-manager — %v\n", err)
+			logger.Error("No se pudo purgar /etc/security-manager/.", fmt.Sprintf("%v", err))
 		} else {
 			fmt.Println("  [reset] OK — configuraciones purgadas.")
 		}
@@ -317,7 +318,7 @@ func main() {
 	if len(os.Args) > 1 {
 		os.Exit(handleCLI(os.Args[1:], logger))
 	}
-	ensureNftablesEnabled()
+	ensureNftablesEnabled(logger)
 	mods := initModules(logger)
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -333,7 +334,7 @@ func main() {
 		}
 
 		if strings.EqualFold(input, "r") {
-			resetGlobal(scanner)
+			resetGlobal(scanner, logger)
 			continue
 		}
 
