@@ -129,7 +129,7 @@ func (h *HardRoot) hardenSSH() {
 
 	// Validar sintaxis antes de recargar — evita recargar con una config rota.
 	if out, err := exec.Command("sshd", "-t").CombinedOutput(); err != nil {
-		fmt.Printf("  ERROR: sshd -t falló tras los cambios:\n%s\n", strings.TrimSpace(string(out)))
+		h.logger.Error("La configuración SSH no pasó la validación.", strings.TrimSpace(string(out)))
 		fmt.Println("  Revisa /etc/ssh/sshd_config manualmente. No se recargó sshd.")
 		return
 	}
@@ -201,7 +201,7 @@ func (h *HardRoot) configureSudoers() {
 
 	out, err := exec.Command("visudo", "-c", "-f", tmpFile).CombinedOutput()
 	if err != nil {
-		fmt.Printf("  ERROR validación visudo: %s\n", strings.TrimSpace(string(out)))
+		h.logger.Error("El archivo sudoers no pasó la validación.", strings.TrimSpace(string(out)))
 		return
 	}
 
