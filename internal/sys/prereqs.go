@@ -31,11 +31,11 @@ func CheckAndInstallPrereqs(readLine func(string) string) error {
 
 	// Mostrar mensaje con distro y versión exacta
 	distroDisplay := distro.Name
+	if distro.Version != "" {
+		distroDisplay += " " + distro.Version
+	}
 	if distroDisplay == "" {
 		distroDisplay = distro.ID
-		if distro.Version != "" {
-			distroDisplay += " " + distro.Version
-		}
 	}
 	fmt.Printf("\n  Se necesitan instalar los siguientes paquetes en %s:\n", distroDisplay)
 	for _, pkg := range missingPkgs {
