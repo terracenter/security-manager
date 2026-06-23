@@ -162,7 +162,13 @@ func (f *Firewall) applyBase() {
 		}
 	}
 
-	// FASE 2: Wizard de servicios en primera instalación
+	// FASE 2: Crear directorio de configuración (necesario para el wizard y el ruleset)
+	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
+		f.logger.Error("No se pudo crear directorio /etc/security-manager/.", fmt.Sprintf("%v", err))
+		return
+	}
+
+	// FASE 3: Wizard de servicios en primera instalación
 	isFirstInstall := !fileExists(infra.RulesetFile)
 	if isFirstInstall {
 		if err := f.runServiceWizard(); err != nil {
@@ -197,11 +203,6 @@ func (f *Firewall) applyBase() {
 	if svc.TailscaleActive {
 		fmt.Println("  [info] Tailscale detectado. Si usas subnet routing IPv6, agrega el rango")
 		fmt.Println("         fd7a:115c:a1e0::/48 a Tier B: whitelist add fd7a:115c:a1e0::/48 --tier B")
-	}
-
-	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
-		f.logger.Error("No se pudo crear directorio /etc/security-manager/.", fmt.Sprintf("%v", err))
-		return
 	}
 
 	tmpFile := infra.ConfDir + "/sm.nft.new"
