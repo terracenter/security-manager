@@ -100,11 +100,36 @@ func (f *Firewall) togglePort80() {
 	f.applyBase()
 }
 
+// writeLogrotateConfig escribe /etc/logrotate.d/security-manager-ng si no existe.
+// Se llama después de un apply exitoso.
+func writeLogrotateConfig() error {
+	logrotateFile := "/etc/logrotate.d/security-manager-ng"
+
+	// Idempotencia: si existe, no regenerar
+	if _, err := os.Stat(logrotateFile); err == nil {
+		return nil
+	}
+
+	content := `# Rotación de logs de Security Manager NG
+/var/log/security-manager-ng.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root root
+}
+`
+
+	return os.WriteFile(logrotateFile, []byte(content), 0o644)
+}
+
 // applyBase genera el ruleset base, valida la sintaxis y lo aplica con safeapply.
 func (f *Firewall) applyBase() {
 	// FASE 1: Validar prereqs (nftables, etc.)
 	if err := sys.CheckAndInstallPrereqs(f.readLine); err != nil {
-		fmt.Printf("\n  ERROR: %v\n", err)
+		f.logger.Error("No se pudieron instalar los paquetes requeridos.", fmt.Sprintf("%v", err))
 		return
 	}
 
@@ -112,7 +137,7 @@ func (f *Firewall) applyBase() {
 	isFirstInstall := !fileExists(infra.RulesetFile)
 	if isFirstInstall {
 		if err := f.runServiceWizard(); err != nil {
-			fmt.Printf("\n  ERROR en wizard de servicios: %v\n", err)
+			f.logger.Error("No se pudo completar el wizard de servicios.", fmt.Sprintf("%v", err))
 			return
 		}
 	}
@@ -146,13 +171,13 @@ func (f *Firewall) applyBase() {
 	}
 
 	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
-		fmt.Printf("\n  ERROR: %v\n", err)
+		f.logger.Error("No se pudo crear directorio /etc/security-manager/.", fmt.Sprintf("%v", err))
 		return
 	}
 
 	tmpFile := infra.ConfDir + "/sm.nft.new"
 	if err := os.WriteFile(tmpFile, []byte(ruleset), 0o640); err != nil {
-		fmt.Printf("\n  ERROR escribiendo ruleset: %v\n", err)
+		f.logger.Error("No se pudo escribir el ruleset.", fmt.Sprintf("%v", err))
 		return
 	}
 	defer os.Remove(tmpFile)
@@ -160,7 +185,7 @@ func (f *Firewall) applyBase() {
 	fmt.Println("\n  Validando sintaxis (nft -c)...")
 	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
 	if err != nil {
-		fmt.Printf("  ERROR de sintaxis nftables:\n%s\n", strings.TrimSpace(string(out)))
+		f.logger.Error("Error de sintaxis en el ruleset generado.", strings.TrimSpace(string(out)))
 		return
 	}
 	fmt.Println("  Sintaxis OK.")
@@ -168,11 +193,11 @@ func (f *Firewall) applyBase() {
 	// Backup del ruleset ACTUAL antes de sobreescribir (deadman revertirá a este).
 	if cur, err := os.ReadFile(infra.RulesetFile); err == nil {
 		_ = os.WriteFile(infra.BackupFile, cur, 0o640)
-		fmt.Printf("  [firewall] Backup: %s → %s\n", infra.RulesetFile, infra.BackupFile)
+		f.logger.Info(fmt.Sprintf("[firewall] Backup: %s → %s", infra.RulesetFile, infra.BackupFile))
 	}
 
 	if err := os.Rename(tmpFile, infra.RulesetFile); err != nil {
-		fmt.Printf("\n  ERROR moviendo ruleset: %v\n", err)
+		f.logger.Error("No se pudo preparar el ruleset para aplicación.", fmt.Sprintf("%v", err))
 		return
 	}
 
@@ -184,11 +209,16 @@ func (f *Firewall) applyBase() {
 		SkipBackup:     true,
 	})
 	if err != nil {
-		fmt.Printf("\n  [firewall] %v\n", err)
+		f.logger.Error("No se pudo aplicar el ruleset.", fmt.Sprintf("%v", err))
 		return
 	}
 
 	infra.EnsureSmNftPersistence()
+
+	// Escribir config de logrotate (idempotente)
+	if err := writeLogrotateConfig(); err != nil {
+		f.logger.Warn(fmt.Sprintf("No se pudo escribir logrotate config: %v", err))
+	}
 }
 
 // showStatus muestra un resumen del estado de la tabla inet sm.
@@ -341,10 +371,10 @@ func (f *Firewall) resetTable() {
 	}
 	out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
 	if err != nil {
-		fmt.Printf("  ERROR en delete: %s\n", strings.TrimSpace(string(out)))
+		f.logger.Error("No se pudo eliminar la tabla inet sm.", strings.TrimSpace(string(out)))
 		return
 	}
-	fmt.Println("  Tabla inet sm eliminada.")
+	f.logger.Screen("  ✓ Tabla inet sm eliminada.")
 }
 
 // RunAction implementa modules.CLIModule para modo no interactivo.
