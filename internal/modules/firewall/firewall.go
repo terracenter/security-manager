@@ -434,7 +434,7 @@ func (f *Firewall) RunAction(action string, args ...string) bool {
 		fmt.Println("  [firewall] Eliminando tabla inet sm...")
 		out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
 		if err != nil {
-			fmt.Printf("  ERROR: %s\n", strings.TrimSpace(string(out)))
+			f.logger.Error("No se pudo eliminar la tabla inet sm.", strings.TrimSpace(string(out)))
 			return false
 		}
 		fmt.Println("  [firewall] OK — tabla inet sm eliminada.")
