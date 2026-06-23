@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 const (
@@ -23,10 +25,11 @@ Defaults logfile="/var/log/sudo.log"
 // HardRoot gestiona el hardening de la cuenta root y sudoers.
 type HardRoot struct {
 	scanner *bufio.Scanner
+	logger  *sys.SMLogger
 }
 
-func New() *HardRoot {
-	return &HardRoot{scanner: bufio.NewScanner(os.Stdin)}
+func New(logger *sys.SMLogger) *HardRoot {
+	return &HardRoot{scanner: bufio.NewScanner(os.Stdin), logger: logger}
 }
 
 func (h *HardRoot) Order() int   { return 5 }

@@ -9,16 +9,18 @@ import (
 	"strings"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 // Blacklist gestiona bans manuales en sm_blacklist4/sm_blacklist6.
 // Operaciones atómicas nft add/delete element — no requiere safeapply.
 type Blacklist struct {
 	scanner *bufio.Scanner
+	logger  *sys.SMLogger
 }
 
-func New() *Blacklist {
-	return &Blacklist{scanner: bufio.NewScanner(os.Stdin)}
+func New(logger *sys.SMLogger) *Blacklist {
+	return &Blacklist{scanner: bufio.NewScanner(os.Stdin), logger: logger}
 }
 
 func (b *Blacklist) Order() int   { return 4 }

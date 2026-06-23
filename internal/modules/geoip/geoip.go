@@ -10,6 +10,7 @@ import (
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 
@@ -17,10 +18,11 @@ import (
 // Fuente de rangos: ipdeny.com (zone files, un CIDR por línea).
 type GeoIP struct {
 	scanner *bufio.Scanner
+	logger  *sys.SMLogger
 }
 
-func New() *GeoIP {
-	return &GeoIP{scanner: bufio.NewScanner(os.Stdin)}
+func New(logger *sys.SMLogger) *GeoIP {
+	return &GeoIP{scanner: bufio.NewScanner(os.Stdin), logger: logger}
 }
 
 func (g *GeoIP) Order() int   { return 3 }

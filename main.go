@@ -58,9 +58,9 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 	mods := []modules.Module{
 		firewall.New(logger),
 		whitelist.New(),
-		geoip.New(),
-		blacklist.New(),
-		hardroot.New(),
+		geoip.New(logger),
+		blacklist.New(logger),
+		hardroot.New(logger),
 		ssh.New(),
 		fail2ban.New(),
 	}
