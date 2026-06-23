@@ -260,7 +260,7 @@ func (f *Firewall) showStatus() {
 		errMsg := strings.TrimSpace(string(out))
 		// Distinguir si es "tabla no existe" o "nft no disponible"
 		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "no such table") {
-			fmt.Println("  ✗ inet sm: no activa — el firewall no está aplicado.")
+			fmt.Println("  ✗ Firewall: INACTIVO — Ninguna regla de seguridad está activa en este servidor.")
 			fmt.Println("     → Usa [1] Aplicar / recargar ruleset base para activarlo.")
 		} else {
 			fmt.Println("  ✗ nft no disponible — verifica que nftables está instalado.")
