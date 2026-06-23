@@ -6,20 +6,20 @@ import (
 	"strings"
 )
 
-// CheckAndInstallPrereqs verifica que los paquetes obligatorios están instalados (solo nftables).
+// CheckAndInstallPrereqs verifica que los paquetes obligatorios están instalados.
 // Si faltan, muestra la lista y solicita confirmación del usuario para instalar.
 // Retorna error si el usuario rechaza o la instalación falla.
 // Nota: CrowdSec es opcional y se maneja de forma separada en CheckAndInstallCrowdSec().
 func CheckAndInstallPrereqs(readLine func(string) string) error {
 	distro := DetectDistro()
 
-	// Solo nftables es obligatorio — CrowdSec es opcional
+	// Paquetes obligatorios: nftables + iproute2/iproute (necesario para ss)
 	var requiredPkgs []string
 	switch distro.Family {
 	case "debian", "ubuntu":
-		requiredPkgs = []string{"nftables"}
+		requiredPkgs = []string{"nftables", "iproute2"}
 	case "rhel":
-		requiredPkgs = []string{"nftables"}
+		requiredPkgs = []string{"nftables", "iproute"}
 	default:
 		return fmt.Errorf("distribución no soportada: %s", distro.ID)
 	}
@@ -27,6 +27,19 @@ func CheckAndInstallPrereqs(readLine func(string) string) error {
 	missingPkgs := filterMissingPackages(distro.Family, requiredPkgs)
 	if len(missingPkgs) == 0 {
 		return nil
+	}
+
+	// Mostrar mensaje con distro y versión exacta
+	distroDisplay := distro.Name
+	if distroDisplay == "" {
+		distroDisplay = distro.ID
+		if distro.Version != "" {
+			distroDisplay += " " + distro.Version
+		}
+	}
+	fmt.Printf("\n  Se necesitan instalar los siguientes paquetes en %s:\n", distroDisplay)
+	for _, pkg := range missingPkgs {
+		fmt.Printf("    - %s\n", pkg)
 	}
 
 	if !OfferInstall(readLine, missingPkgs...) {
