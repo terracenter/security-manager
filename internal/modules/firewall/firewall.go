@@ -263,7 +263,7 @@ func (f *Firewall) showStatus() {
 			fmt.Println("  ✗ Firewall: INACTIVO — Ninguna regla de seguridad está activa en este servidor.")
 			fmt.Println("     → Usa [1] Aplicar / recargar ruleset base para activarlo.")
 		} else {
-			fmt.Println("  ✗ nft no disponible — verifica que nftables está instalado.")
+			fmt.Println("  ✗ nftables no está instalado — el firewall no puede funcionar.")
 			fmt.Println("     → Ejecuta: sudo apt install nftables")
 		}
 		if f.logger != nil {
