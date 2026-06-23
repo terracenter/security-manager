@@ -2,6 +2,7 @@ package sys
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
 	"strconv"
@@ -21,10 +22,11 @@ type ServiceInfo struct {
 func DetectListeningServices() ([]ServiceInfo, error) {
 	var services []ServiceInfo
 
+	flagMap := map[string]string{"tcp": "t", "udp": "u"}
 	for _, proto := range []string{"tcp", "udp"} {
 		cmd := "ss"
-		args := []string{"-" + proto, "lnp"}
-		out, err := RunCmdOut(cmd, args...)
+		flag := "-" + flagMap[proto] + "lnp"
+		out, err := RunCmdOut(cmd, flag)
 		if err != nil {
 			return nil, fmt.Errorf("error ejecutando ss -%s: %v", proto, err)
 		}
@@ -37,11 +39,6 @@ func DetectListeningServices() ([]ServiceInfo, error) {
 
 			info, ok := parseSsLine(line, proto)
 			if !ok {
-				continue
-			}
-
-			// Excluir loopback
-			if strings.HasPrefix(info.Proto, "127.") || info.Proto == "::1" {
 				continue
 			}
 
@@ -60,9 +57,20 @@ func DetectListeningServices() ([]ServiceInfo, error) {
 	return services, nil
 }
 
+// isLoopbackAddr verifica si una dirección local es loopback (127.x.x.x o ::1).
+func isLoopbackAddr(localAddr string) bool {
+	host, _, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // parseSsLine parsea una línea de salida de `ss -tlnp` o `ss -ulnp`.
 // Formato esperado:
 //   LISTEN 0 128 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=1234,fd=6))
+// Filtra automáticamente direcciones loopback.
 // Retorna ServiceInfo con Proto temporalmente usado para IP origen (ignorar).
 func parseSsLine(line string, proto string) (ServiceInfo, bool) {
 	parts := strings.Fields(line)
@@ -72,6 +80,12 @@ func parseSsLine(line string, proto string) (ServiceInfo, bool) {
 
 	// Parsear dirección local (campo 3): "0.0.0.0:443" o "[::1]:443"
 	localAddr := parts[3]
+
+	// Filtrar loopback: solo procesar si la IP no es loopback
+	if isLoopbackAddr(localAddr) {
+		return ServiceInfo{}, false
+	}
+
 	port, processName := extractPortAndProcess(localAddr, line)
 	if port == 0 {
 		return ServiceInfo{}, false
