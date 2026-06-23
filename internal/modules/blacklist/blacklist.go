@@ -92,7 +92,12 @@ func (b *Blacklist) listIPs() {
 				setName, strings.TrimSpace(string(out)))
 			continue
 		}
-		fmt.Printf("--- %s ---\n%s\n", setName, strings.TrimSpace(string(out)))
+		count := strings.Count(strings.TrimSpace(string(out)), "\n") + 1
+		if strings.TrimSpace(string(out)) == "" {
+			count = 0
+		}
+		b.logger.Screen(fmt.Sprintf("  %-20s %d entradas", setName, count))
+		b.logger.Technical(strings.TrimSpace(string(out)))
 	}
 }
 

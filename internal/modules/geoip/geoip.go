@@ -282,7 +282,7 @@ func (g *GeoIP) applyGeoIPCore() {
 	fmt.Println("  Validando sintaxis (nft -c)...")
 	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
 	if err != nil {
-		fmt.Printf("  ERROR de sintaxis:\n%s\n", strings.TrimSpace(string(out)))
+		g.logger.Error("Error de sintaxis en el ruleset GeoIP generado.", strings.TrimSpace(string(out)))
 		return
 	}
 	fmt.Println("  Sintaxis OK.")
