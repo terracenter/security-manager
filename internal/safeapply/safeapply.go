@@ -62,13 +62,23 @@ func Apply(p Plan) error {
 
 	confirmed := askConfirm(p, unit)
 	if confirmed {
-		cancelDeadman(unit)
+		if err := cancelDeadman(unit); err != nil {
+			fmt.Printf("\n  [safeapply] ADVERTENCIA: no se pudo cancelar el deadman (%v). "+
+				"El rollback automático PUEDE ejecutarse en los próximos %ds pese a tu confirmación — "+
+				"verifica manualmente con: systemctl list-timers | grep %s\n", err, p.DeadmanTimeout, unit)
+			return fmt.Errorf("cancelar deadman tras confirmación: %w", err)
+		}
 		fmt.Println("\n  [safeapply] Reglas confirmadas. Deadman cancelado.")
 		return nil
 	}
 
 	// El operador no confirmó — revertir manualmente (el deadman hubiera actuado igualmente).
-	cancelDeadman(unit)
+	if err := cancelDeadman(unit); err != nil {
+		fmt.Printf("\n  [safeapply] ADVERTENCIA: no se pudo cancelar el deadman (%v) antes del "+
+			"rollback manual — puede quedar un rollback duplicado en background (no es peligroso, "+
+			"aplica el mismo backup dos veces), pero verifica con: systemctl list-timers | grep %s\n",
+			err, unit)
+	}
 	if err := rollback(p); err != nil {
 		return fmt.Errorf("rollback manual: %w", err)
 	}
@@ -152,9 +162,24 @@ func scheduleDeadman(p Plan) (string, error) {
 	return unitName, nil
 }
 
-// cancelDeadman detiene el timer del deadman.
-func cancelDeadman(unit string) {
-	_ = exec.Command("systemctl", "stop", unit).Run()
+// cancelDeadman detiene el timer del deadman y confirma que quedó inactivo.
+// Si no logra detenerlo o no puede confirmar su estado, retorna error: el timer
+// puede seguir vivo en background y ejecutar el rollback más tarde sin que el
+// operador lo sepa.
+func cancelDeadman(unit string) error {
+	if out, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl stop %s: %s: %w", unit, strings.TrimSpace(string(out)), err)
+	}
+	// systemctl stop puede retornar 0 sin que la unit haya terminado de morir;
+	// confirmar con is-active para no dejar el deadman corriendo sin saberlo.
+	out, err := exec.Command("systemctl", "is-active", unit).CombinedOutput()
+	state := strings.TrimSpace(string(out))
+	if err == nil {
+		// is-active retorna código 0 solo si la unit SIGUE activa.
+		return fmt.Errorf("la unit %s sigue activa tras 'systemctl stop' (estado: %s) — "+
+			"el deadman puede ejecutar rollback de todos modos", unit, state)
+	}
+	return nil
 }
 
 // rollback restaura el backup aplicando nft -f BackupFile.
