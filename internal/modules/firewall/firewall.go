@@ -243,7 +243,10 @@ func (f *Firewall) applyBase() {
 		return
 	}
 
-	infra.EnsureSmNftPersistence()
+	if err := infra.EnsureSmNftPersistence(); err != nil {
+		f.logger.Warn(fmt.Sprintf("Persistencia en boot no configurada — agrega manualmente "+
+			"'include \"/etc/security-manager/sm.nft\"' en /etc/nftables.conf: %v", err))
+	}
 
 	// Escribir config de logrotate (idempotente)
 	if err := writeLogrotateConfig(); err != nil {

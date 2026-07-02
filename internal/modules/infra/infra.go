@@ -813,24 +813,25 @@ func geoipRulesBlock(geoip GeoIPData) string {
 		SetGeoAllow4, SetGeoAllow6)
 }
 
-func EnsureSmNftPersistence() {
+func EnsureSmNftPersistence() error {
 	const nftConf = "/etc/nftables.conf"
 	const includeLine = "include \"/etc/security-manager/sm.nft\""
 
 	data, err := os.ReadFile(nftConf)
 	if err != nil {
-		fmt.Printf("  WARN: no se pudo leer %s — persistencia manual requerida\n", nftConf)
-		return
+		return fmt.Errorf("no se pudo leer %s — persistencia manual requerida: %w", nftConf, err)
 	}
 	if strings.Contains(string(data), includeLine) {
-		return
+		return nil
 	}
 	f, err := os.OpenFile(nftConf, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		fmt.Printf("  WARN: no se pudo escribir %s — persistencia manual requerida\n", nftConf)
-		return
+		return fmt.Errorf("no se pudo escribir %s — persistencia manual requerida: %w", nftConf, err)
 	}
 	defer f.Close()
-	_, _ = f.WriteString("\n# Security Manager NG\n" + includeLine + "\n")
+	if _, err := f.WriteString("\n# Security Manager NG\n" + includeLine + "\n"); err != nil {
+		return fmt.Errorf("no se pudo escribir línea de persistencia en %s: %w", nftConf, err)
+	}
 	fmt.Println("  [persist] sm.nft incluido en /etc/nftables.conf para persistencia en boot.")
+	return nil
 }
