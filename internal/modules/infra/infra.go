@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -813,6 +814,31 @@ func geoipRulesBlock(geoip GeoIPData) string {
 		SetGeoAllow4, SetGeoAllow6)
 }
 
+// isImmutable reporta si path tiene el atributo immutable (chattr +i) activo.
+func isImmutable(path string) (bool, error) {
+	out, err := exec.Command("lsattr", path).Output()
+	if err != nil {
+		return false, fmt.Errorf("no se pudo ejecutar lsattr sobre %s: %w", path, err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return false, fmt.Errorf("salida de lsattr inesperada para %s", path)
+	}
+	return strings.Contains(fields[0], "i"), nil
+}
+
+// setImmutable activa o desactiva el atributo immutable (chattr +i/-i) sobre path.
+func setImmutable(path string, immutable bool) error {
+	flag := "-i"
+	if immutable {
+		flag = "+i"
+	}
+	if out, err := exec.Command("chattr", flag, path).CombinedOutput(); err != nil {
+		return fmt.Errorf("chattr %s %s falló: %s: %w", flag, path, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 func EnsureSmNftPersistence() error {
 	const nftConf = "/etc/nftables.conf"
 	const includeLine = "include \"/etc/security-manager/sm.nft\""
@@ -824,6 +850,30 @@ func EnsureSmNftPersistence() error {
 	if strings.Contains(string(data), includeLine) {
 		return nil
 	}
+
+	// Algunos baselines de hardening (CIS/Proxmox) marcan /etc/nftables.conf como
+	// immutable — ni root puede escribirlo sin quitar el atributo primero. Si no
+	// se puede determinar el estado, se asume que no es immutable y se deja que
+	// OpenFile reporte su propio error si el problema persiste.
+	immutable, err := isImmutable(nftConf)
+	if err != nil {
+		fmt.Println("  [persist] AVISO: no se pudo determinar si " + nftConf +
+			" tiene chattr +i (" + err.Error() + "); se continúa asumiendo que no lo tiene.")
+		immutable = false
+	}
+
+	if immutable {
+		if err := setImmutable(nftConf, false); err != nil {
+			return fmt.Errorf("no se pudo quitar chattr +i de %s — persistencia manual requerida: %w", nftConf, err)
+		}
+		defer func() {
+			if rerr := setImmutable(nftConf, true); rerr != nil {
+				fmt.Println("  [persist] ADVERTENCIA: no se pudo restaurar chattr +i en " +
+					nftConf + " — restáuralo manualmente: " + rerr.Error())
+			}
+		}()
+	}
+
 	f, err := os.OpenFile(nftConf, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("no se pudo escribir %s — persistencia manual requerida: %w", nftConf, err)
