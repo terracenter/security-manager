@@ -150,6 +150,10 @@ func scheduleDeadman(p Plan) (string, error) {
 		"--collect",
 		"--unit="+unitName,
 		fmt.Sprintf("--on-active=%ds", p.DeadmanTimeout),
+		// AccuracySec por defecto de systemd es ~1 min: sin fijarlo, el deadman puede
+		// dispararse hasta 60s más tarde del timeout configurado. Precisión exacta aquí
+		// evita que el operador confirme dentro del timeout y el rollback dispare igual.
+		"--timer-property=AccuracySec=1s",
 	)
 	cmd.Args = append(cmd.Args, deadmanArgs...)
 
@@ -168,21 +172,20 @@ func scheduleDeadman(p Plan) (string, error) {
 // compañera (mismo nombre base) que es la que realmente arranca de inmediato y
 // cuenta el --on-active. Detener/verificar solo el .service es un falso positivo:
 // el .service siempre reporta "inactive" (nunca llegó a iniciar) sin importar si
-// el .timer sigue armado. Por eso se detiene y verifica el .timer, no el .service.
-// Si no logra detenerlo o no puede confirmar su estado, retorna error: el deadman
-// puede seguir vivo en background y ejecutar el rollback más tarde sin que el
-// operador lo sepa.
+// el .timer sigue armado. Si is-active sobre la .timer indica que sigue activa,
+// retorna error: el deadman puede seguir vivo en background y ejecutar el
+// rollback más tarde sin que el operador lo sepa.
 func cancelDeadman(unit string) error {
 	timerUnit := strings.TrimSuffix(strings.TrimSpace(unit), ".service") + ".timer"
 
-	if out, err := exec.Command("systemctl", "stop", timerUnit).CombinedOutput(); err != nil {
-		return fmt.Errorf("systemctl stop %s: %s: %w", timerUnit, strings.TrimSpace(string(out)), err)
-	}
-	if out, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
-		return fmt.Errorf("systemctl stop %s: %s: %w", unit, strings.TrimSpace(string(out)), err)
-	}
-	// systemctl stop puede retornar 0 sin que la unit haya terminado de morir;
-	// confirmar con is-active para no dejar el deadman corriendo sin saberlo.
+	// Best-effort: "not loaded" en cualquiera de los dos stops es un resultado válido
+	// (timer detenida a tiempo → service nunca cargó; o timer ya disparó y --collect
+	// ya recolectó ambas unidades → cancelar es moot, el rollback ya actuó). El único
+	// árbitro fiable del estado real es is-active sobre la .timer, no el exit code
+	// de "stop" (systemctl(1): is-active retorna 0 solo si la unit sigue activa).
+	_, _ = exec.Command("systemctl", "stop", timerUnit).CombinedOutput()
+	_, _ = exec.Command("systemctl", "stop", unit).CombinedOutput()
+
 	out, err := exec.Command("systemctl", "is-active", timerUnit).CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err == nil {
