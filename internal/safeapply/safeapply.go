@@ -163,21 +163,32 @@ func scheduleDeadman(p Plan) (string, error) {
 }
 
 // cancelDeadman detiene el timer del deadman y confirma que quedó inactivo.
-// Si no logra detenerlo o no puede confirmar su estado, retorna error: el timer
+// systemd-run --on-active crea DOS unidades transitorias: el .service (el comando
+// de rollback en sí, que permanece dormido hasta ser disparado) y una unidad .timer
+// compañera (mismo nombre base) que es la que realmente arranca de inmediato y
+// cuenta el --on-active. Detener/verificar solo el .service es un falso positivo:
+// el .service siempre reporta "inactive" (nunca llegó a iniciar) sin importar si
+// el .timer sigue armado. Por eso se detiene y verifica el .timer, no el .service.
+// Si no logra detenerlo o no puede confirmar su estado, retorna error: el deadman
 // puede seguir vivo en background y ejecutar el rollback más tarde sin que el
 // operador lo sepa.
 func cancelDeadman(unit string) error {
+	timerUnit := strings.TrimSuffix(strings.TrimSpace(unit), ".service") + ".timer"
+
+	if out, err := exec.Command("systemctl", "stop", timerUnit).CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl stop %s: %s: %w", timerUnit, strings.TrimSpace(string(out)), err)
+	}
 	if out, err := exec.Command("systemctl", "stop", unit).CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl stop %s: %s: %w", unit, strings.TrimSpace(string(out)), err)
 	}
 	// systemctl stop puede retornar 0 sin que la unit haya terminado de morir;
 	// confirmar con is-active para no dejar el deadman corriendo sin saberlo.
-	out, err := exec.Command("systemctl", "is-active", unit).CombinedOutput()
+	out, err := exec.Command("systemctl", "is-active", timerUnit).CombinedOutput()
 	state := strings.TrimSpace(string(out))
 	if err == nil {
 		// is-active retorna código 0 solo si la unit SIGUE activa.
-		return fmt.Errorf("la unit %s sigue activa tras 'systemctl stop' (estado: %s) — "+
-			"el deadman puede ejecutar rollback de todos modos", unit, state)
+		return fmt.Errorf("el timer %s sigue activo tras 'systemctl stop' (estado: %s) — "+
+			"el deadman puede ejecutar rollback de todos modos", timerUnit, state)
 	}
 	return nil
 }
