@@ -6,6 +6,18 @@ BINARY="security-manager-ng"
 DEST="/usr/local/sbin/${BINARY}"
 SRC="${HOME}/${BINARY}"
 
+# ── Modo alterno: descargar desde GitHub Release ───────────────────────────────
+if [[ "${SMNG_FROM_RELEASE}" == "1" ]]; then
+    echo "[install] SMNG_FROM_RELEASE=1: descargando desde GitHub Release..."
+    RELEASE_URL="https://github.com/terracenter/security-manager-ng/releases/latest/download/${BINARY}"
+    if ! curl -sL "${RELEASE_URL}" -o "${SRC}"; then
+        echo "ERROR: no se pudo descargar el binario desde ${RELEASE_URL}" >&2
+        exit 1
+    fi
+    chmod +x "${SRC}"
+    echo "[install] Binario descargado a ${SRC}"
+fi
+
 # ── Verificaciones previas ────────────────────────────────────────────────────
 
 if [[ ${EUID} -eq 0 ]]; then

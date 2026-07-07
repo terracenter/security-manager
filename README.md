@@ -157,6 +157,14 @@ bash deploy/deploy.sh <IP_o_hostname>
 El binario se instala en `/usr/local/sbin/security-manager-ng` del host remoto. **Nunca**
 usar `go run` en producción — siempre binario compilado.
 
+### Instalación desde GitHub Releases (alterno)
+
+```bash
+curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng -o security-manager-ng
+sha256sum -c security-manager-ng.sha256   # verificar contra el checksum publicado en el Release
+sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
+```
+
 ### Validar el ruleset antes de aplicar
 
 ```bash
