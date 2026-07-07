@@ -181,4 +181,25 @@ sudo nft list set inet sm sm_whitelist4
 
 ## Estado actual
 
-🟡 **Diseño / Inicio de desarrollo** — arquitectura fijada, código Go en construcción.
+✅ **En desarrollo activo, funcional — no publicado en `main` todavía.**
+
+- **Módulos completos** (menú interactivo + CLI): `firewall` (ruleset nftables declarativo +
+  safe-apply), `whitelist` (Tier A/B, sincroniza CrowdSec y fail2ban), `geoip` (allowlist por
+  país vía ipdeny.com), `blacklist` (bans manuales IPv4/IPv6), `hardroot` (hardening root +
+  sudoers), `ssh` (hardening `sshd_config.d`), `fail2ban` (monitoreo de solo lectura).
+- **CrowdSec**: integrado como backend de detección de amenazas — prerequisito opcional
+  instalado por distro, set `crowdsec-blacklists` en el ruleset nftables, sincronización de
+  allowlist desde whitelist Tier B. Aún no expuesto como módulo propio de menú/CLI (esa es una
+  mejora pendiente, no implementada).
+- **Infraestructura**: `SMLogger` dual pantalla+log, detección e instalación automática de
+  prerequisitos por distro, wizard de servicios detectados, SSH IP Guard (corregido en
+  TASK-F4.5 — funciona bajo `sudo` vía `sys.GetSSHIP()`).
+- **safe-apply**: ciclo `backup → preflight → deadman (.timer como árbitro) → confirm/rollback`,
+  con persistencia validada en `/etc/nftables.conf` (maneja `chattr +i` de corridas previas).
+- **Validado en producción**: Debian 12, host piloto `PILOT-HOST-REDACTED` (última tag formal
+  `v0.6.0`).
+- **Pendiente:**
+  - Exponer CrowdSec como módulo propio de menú/CLI (hoy es solo backend).
+  - Nueva tag de release — `dev` está 87 commits adelante de `v0.6.0` sin tag nueva.
+  - Merge `dev` → `main` — requiere aprobación explícita de Freddy (Regla de Oro del workspace);
+    hoy `main` solo tiene el commit de bootstrap, sin código.
