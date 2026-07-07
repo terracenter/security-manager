@@ -1,3 +1,5 @@
+**Español** · [English](README_en.md)
+
 # Security-Manager-NG
 
 Sucesor de [Security-Manager-Go](https://github.com/terracenter/Security-Manager-Go) —
@@ -152,7 +154,7 @@ go build ./...
 bash deploy/deploy.sh <IP_o_hostname>
 ```
 
-El binario se instala en `/usr/local/sbin/security-manager` del host remoto. **Nunca**
+El binario se instala en `/usr/local/sbin/security-manager-ng` del host remoto. **Nunca**
 usar `go run` en producción — siempre binario compilado.
 
 ### Validar el ruleset antes de aplicar
@@ -203,3 +205,26 @@ sudo nft list set inet sm sm_whitelist4
   - Nueva tag de release — `dev` está 87 commits adelante de `v0.6.0` sin tag nueva.
   - Merge `dev` → `main` — requiere aprobación explícita de Freddy (Regla de Oro del workspace);
     hoy `main` solo tiene el commit de bootstrap, sin código.
+
+---
+
+## Roadmap
+
+- **Módulo CrowdSec propio** (menú + CLI): hoy `internal/modules/crowdsec/` es lógica de soporte
+  interna, llamada desde `whitelist.go` (sincronización de allowlist) e `infra.go` (sets de
+  ruleset). No implementa la interface `modules.Module` ni está registrado en `main.go`. Falta
+  implementar `Order()/Name()/Menu()/Reset()` y mover la lógica de instalación hoy en
+  `internal/sys/prereqs.go` (`CheckAndInstallCrowdSec` y helpers) hacia el módulo propio.
+- **Internacionalización del CLI en runtime**: hoy todos los mensajes del programa (menú,
+  prompts, ayuda) están hardcodeados en español. Falta diseñar un sistema de i18n (mapa de
+  strings o librería) para que el binario mismo soporte español (Venezuela) por defecto e
+  inglés (US) como secundario — no solo la documentación.
+
+---
+
+## Licencia
+
+AGPLv3 — ver [`LICENSE`](LICENSE). Este software es open source; no se vende el binario. El
+modelo de sostenibilidad es soporte y consultoría, no venta de licencias. Ver también
+[`NOTICE`](NOTICE), [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) y
+[`SECURITY.md`](SECURITY.md) para reportar vulnerabilidades.
