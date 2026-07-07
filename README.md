@@ -206,7 +206,7 @@ sudo nft list set inet sm sm_whitelist4
   TASK-F4.5 — funciona bajo `sudo` vía `sys.GetSSHIP()`).
 - **safe-apply**: ciclo `backup → preflight → deadman (.timer como árbitro) → confirm/rollback`,
   con persistencia validada en `/etc/nftables.conf` (maneja `chattr +i` de corridas previas).
-- **Validado en producción**: Debian 12, host piloto `PILOT-HOST-REDACTED` (última tag formal
+- **Validado en producción**: Debian 12, host piloto de pruebas (última tag formal
   `v0.6.0`).
 - **Pendiente:**
   - Exponer CrowdSec como módulo propio de menú/CLI (hoy es solo backend).

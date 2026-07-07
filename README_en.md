@@ -205,7 +205,7 @@ sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security
   `sys.GetSSHIP()`).
 - **safe-apply**: cycle `backup → preflight → deadman (.timer as arbiter) → confirm/rollback`,
   with validated persistence at `/etc/nftables.conf` (handles `chattr +i` from prior runs).
-- **Validated in production**: Debian 12, pilot host `PILOT-HOST-REDACTED` (latest formal tag
+- **Validated in production**: Debian 12, test pilot host (latest formal tag
   `v0.6.0`).
 - **Pending:**
   - Expose CrowdSec as its own menu/CLI module (today it's backend only).
