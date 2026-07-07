@@ -854,4 +854,49 @@ inet sm: ✓ activa  |  SSH: :22  |  GeoIP: VE CO PE DO  |  WL: 2  |  BL: 0
 
 - Tamaño binario en servidor: 6.0M (vs 8.9M local) — diferencia esperada por `-ldflags="-s -w"` (strip de símbolos de debug).
 - VAL-1 ejecutado con `sudo security-manager-ng -v` (alternativa a `strings`, más confiable porque también valida que el binario arranca correctamente).
+
+---
+
+## [TASK-BATCH] Commits sin entrada de registro previa (2026-07-02 / 2026-07-03)
+
+Los siguientes 5 commits se integraron a `dev` (vía cherry-pick durante la corrección de merges no
+autorizados del 2026-07-07) pero no tenían entrada en este log. Se documentan aquí en batch:
+
+| Commit | Fecha | Resumen |
+|--------|-------|---------|
+| `6321043` | 2026-07-02 | fix(infra): `EnsureSmNftPersistence()` propaga el error real (`%w`) en vez de descartarlo; `applyBase()` lo reporta vía `f.logger.Warn` — antes la tabla `inet sm` no persistía tras reboot sin ninguna pista de la causa. |
+| `c297c45` | 2026-07-02 | fix(safeapply): `cancelDeadman()` retorna error y verifica `systemctl is-active` tras el `stop` — corrige falso positivo donde "Reglas confirmadas. Deadman cancelado." se imprimía aunque el timer siguiera vivo y disparara rollback minutos después. |
+| `f08e921` | 2026-07-03 | fix(safeapply): corrige el fix anterior — `systemd-run --on-active` arma una unidad `.timer` compañera, no el `.service`; `cancelDeadman()` ahora detiene y verifica `is-active` sobre el `.timer` real (confirmado en `PILOT-HOST-REDACTED`: rollback disparaba igual pese a "éxito" reportado). |
+| `3ee2bbb` | 2026-07-03 | fix(safeapply): segunda opinión — usa exclusivamente `is-active` de la `.timer` como árbitro (el exit code de `stop` es ambiguo entre timer ya recolectado vs. timer aún armado); agrega `AccuracySec=1s` al deadman para eliminar hasta 60s de margen por defecto de systemd. |
+| `41c8f80` | 2026-07-03 | fix(infra): detecta y maneja `chattr +i` en `/etc/nftables.conf` durante `EnsureSmNftPersistence()` — evita fallos silenciosos de escritura cuando el archivo quedó inmutable de una corrida previa. |
+
+---
+
+## [TASK-F4.5] Fix SSH IP Guard bajo `sudo`
+
+| Campo | Valor |
+|-------|-------|
+| Fecha | 2026-07-07 |
+| Estado | ✅ COMPLETADA |
+| Archivos | `internal/modules/firewall/firewall.go` |
+
+**Causa raíz:** `applyBase()` (línea 137) usaba `detectSSHClientIP()`, que solo lee `$SSH_CLIENT`.
+`sudo` limpia el entorno por defecto → variable vacía → el SSH IP Guard se omitía **silenciosamente**:
+nunca preguntaba, nunca escribía `immune4.conf`/`whitelist4.conf`. El puerto 22 quedaba hardcodeado
+abierto en el ruleset (stage 8, `tcp dport 22 accept` sin condición de ACL) sin el control que el
+guard debía aplicar. Confirmado en validación previa sobre `PILOT-HOST-REDACTED` (2026-06-23).
+
+**Fix:** reemplazado `detectSSHClientIP()` por `sys.GetSSHIP()` (`internal/sys/sys.go:13`), que ya
+implementa fallback a `who am i` y funciona correctamente bajo `sudo` — el mismo patrón que ya usaba
+`internal/modules/whitelist/whitelist.go` (líneas 143 y 496). Se eliminó `detectSSHClientIP()`
+(dead code tras el cambio, único caller reemplazado).
+
+**Validación:**
+- `go build ./...` → limpio.
+- `go vet ./...` → limpio.
+- `go test ./...` → 3 passed, 13 packages.
+- `grep -rn detectSSHClientIP .` → 0 resultados.
+
+**Pendiente (fuera de alcance de esta tarea):** actualizar `README.md` sección `## Estado actual`
+(vacía desde bootstrap); decisión de merge `dev` → `main` requiere aprobación explícita de Freddy.
 - GeoIP cargado: VE CO PE DO (4 países). Whitelist: 2 entradas. Blacklist: vacía (estado limpio).

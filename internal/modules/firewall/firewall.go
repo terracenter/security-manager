@@ -134,7 +134,7 @@ func (f *Firewall) applyBase() {
 	}
 
 	// SSH IP Guard: verificar que la IP SSH activa está en la lista blanca/immune
-	if sshIP := detectSSHClientIP(); sshIP != "" {
+	if sshIP := sys.GetSSHIP(); sshIP != "" {
 		if !ipExistsInACL(sshIP) {
 			fmt.Printf("\n  ⚠️  Tu IP de conexión SSH (%s) no está en la lista blanca.\n", sshIP)
 			fmt.Println("      Si aplicas el firewall sin registrarla, perderás acceso al servidor.")
@@ -657,19 +657,6 @@ func fileExists(path string) bool {
 // isTerminal verifica si un file descriptor es un terminal.
 func isTerminal(f *os.File) bool {
 	return exec.Command("test", "-t", fmt.Sprintf("%d", f.Fd())).Run() == nil
-}
-
-// detectSSHClientIP extrae la IP del cliente SSH desde $SSH_CLIENT.
-// Formato: "IP puerto_origen puerto_destino"
-// Retorna "" si no hay $SSH_CLIENT (ejecución local).
-func detectSSHClientIP() string {
-	if v := os.Getenv("SSH_CLIENT"); v != "" {
-		fields := strings.Fields(v)
-		if len(fields) > 0 {
-			return fields[0]
-		}
-	}
-	return ""
 }
 
 // ipExistsInACL verifica si la IP está en alguno de los archivos ACL.
