@@ -21,6 +21,7 @@ import (
 )
 
 var Version = "dev"
+var RepoURL = "https://github.com/terracenter/security-manager-ng"
 
 type sysStatus struct {
 	smActive     bool
@@ -76,6 +77,7 @@ func printMenu(mods []modules.Module) {
 	fmt.Println("║       Security Manager NG            ║")
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Printf("  Versión: %s\n", Version)
+	fmt.Printf("  Repositorio: %s\n", RepoURL)
 	fmt.Printf("  Usuario activo: %s\n", sys.CurrentUser())
 
 	smStr := "✗ inactivo"
@@ -188,6 +190,10 @@ func resetGlobal(scanner *bufio.Scanner, logger *sys.SMLogger) {
 // handleCLI enruta argumentos CLI al módulo correspondiente.
 // Retorna 0 en éxito, 1 en error.
 func handleCLI(args []string, logger *sys.SMLogger) int {
+	if len(args) > 0 && (args[0] == "--version" || args[0] == "-v") {
+		fmt.Printf("Security Manager NG %s\n%s\n", Version, RepoURL)
+		return 0
+	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		printCLIHelp()
 		return 0

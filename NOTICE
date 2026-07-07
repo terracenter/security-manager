@@ -1,0 +1,15 @@
+Security-Manager-NG
+Copyright (C) 2026 Freddy Taborda / terracenter
+
+Este programa es software libre: puedes redistribuirlo y/o modificarlo bajo los
+términos de la GNU Affero General Public License publicada por la Free Software
+Foundation, versión 3 de la licencia. Ver el archivo LICENSE para el texto completo.
+
+Aviso sobre dependencias: a la fecha de esta versión, este binario no enlaza
+ninguna dependencia de terceros (ver THIRD-PARTY-LICENSES.md) — usa exclusivamente
+la librería estándar de Go.
+
+Herramientas del sistema operativo invocadas en tiempo de ejecución (nft, fail2ban,
+sshd, systemctl, passwd, entre otras) se ejecutan como procesos separados vía
+os/exec — no se enlazan ni se distribuyen junto con este binario, y conservan sus
+propias licencias (GPLv2, GPLv3, u otras según el proyecto).
