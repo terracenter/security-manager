@@ -14,3 +14,6 @@ vendor/
 
 # Bitácora interna (movida a vault privado)
 TASK_LOG.md
+
+# Instrucciones internas del agente (no público)
+CLAUDE.md
