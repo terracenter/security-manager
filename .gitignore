@@ -11,3 +11,6 @@ vendor/
 # Editor / SO
 *.swp
 .DS_Store
+
+# Bitácora interna (movida a vault privado)
+TASK_LOG.md
