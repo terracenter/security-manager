@@ -636,7 +636,7 @@ func crowdsecDropRules() string {
 
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist/allowed_ports desde los archivos de config para preservar entradas entre recargas.
-func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
+func GenerateRuleset(sshPort int, sshEnabled bool, geoip GeoIPData, port80 bool) string {
 	svc := DetectGlobalServices()
 	allPorts, _ := ReadPortEntries(AllowedPortsFile)
 
@@ -653,6 +653,11 @@ func GenerateRuleset(sshPort int, geoip GeoIPData, port80 bool) string {
 	sshComment := ""
 	if sshPort != 22 {
 		sshComment = " # puerto personalizado (sshd_config)"
+	}
+
+	sshLine := ""
+	if sshEnabled {
+		sshLine = fmt.Sprintf("        tcp dport %d accept%s\n", sshPort, sshComment)
 	}
 
 	tailscaleRule := ""
@@ -733,8 +738,7 @@ table inet sm {
         #     Para acceso GLOBAL a SSH/443 (LAN, IP fija, proveedor), agregar la IP
         #     a Confiables/Intocables (stage 6) — NO abrir estos puertos al mundo.
         #     (El puerto 80 está en stage 7a, global, solo para Let's Encrypt HTTP-01.)
-        tcp dport %d accept%s
-        tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
+%s        tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
 %s        icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
@@ -763,7 +767,7 @@ table inet sm {
 		SetImmune4, SetImmune6,
 		globalExceptionsBlock(svc, port80, globalPorts),
 		geoipRulesBlock(geoip),
-		sshPort, sshComment,
+		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
 	)
 }
@@ -883,5 +887,54 @@ func EnsureSmNftPersistence() error {
 		return fmt.Errorf("no se pudo escribir línea de persistencia en %s: %w", nftConf, err)
 	}
 	fmt.Println("  [persist] sm.nft incluido en /etc/nftables.conf para persistencia en boot.")
+	return nil
+}
+
+// RemoveSmNftPersistence quita el include de sm.nft de /etc/nftables.conf, simétrico
+// a EnsureSmNftPersistence. Usada por Reset() para no dejar un include huérfano
+// apuntando a un ruleset que ya no existe.
+func RemoveSmNftPersistence() error {
+	const nftConf = "/etc/nftables.conf"
+	const includeLine = "include \"/etc/security-manager/sm.nft\""
+
+	data, err := os.ReadFile(nftConf)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("no se pudo leer %s: %w", nftConf, err)
+	}
+	if !strings.Contains(string(data), includeLine) {
+		return nil
+	}
+
+	immutable, err := isImmutable(nftConf)
+	if err != nil {
+		fmt.Println("  [persist] AVISO: no se pudo determinar chattr +i en " + nftConf + ": " + err.Error())
+		immutable = false
+	}
+	if immutable {
+		if err := setImmutable(nftConf, false); err != nil {
+			return fmt.Errorf("no se pudo quitar chattr +i de %s: %w", nftConf, err)
+		}
+		defer func() {
+			if rerr := setImmutable(nftConf, true); rerr != nil {
+				fmt.Println("  [persist] ADVERTENCIA: no se pudo restaurar chattr +i en " + nftConf + ": " + rerr.Error())
+			}
+		}()
+	}
+
+	var kept []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, includeLine) || strings.TrimSpace(line) == "# Security Manager NG" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	cleaned := strings.TrimRight(strings.Join(kept, "\n"), "\n") + "\n"
+	if err := os.WriteFile(nftConf, []byte(cleaned), 0o644); err != nil {
+		return fmt.Errorf("no se pudo limpiar %s: %w", nftConf, err)
+	}
+	fmt.Println("  [persist] include de sm.nft eliminado de " + nftConf + ".")
 	return nil
 }

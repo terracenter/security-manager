@@ -10,7 +10,7 @@ func TestGenerateRulesetTwoTiers(t *testing.T) {
 	geoip := GeoIPData{Countries: []CountrySet{
 		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
 	}}
-	rs := GenerateRuleset(22, geoip, true)
+	rs := GenerateRuleset(22, true, geoip, true)
 
 	mustContain := []string{
 		"set sm_whitelist4", "set sm_whitelist6",
@@ -48,13 +48,51 @@ func TestGenerateRulesetPort80Disabled(t *testing.T) {
 	geoip := GeoIPData{Countries: []CountrySet{
 		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
 	}}
-	rs := GenerateRuleset(22, geoip, false)
+	rs := GenerateRuleset(22, true, geoip, false)
 
 	if strings.Contains(rs, "tcp dport 80 accept") {
 		t.Error("ruleset no debe contener tcp dport 80 cuando port80=false")
 	}
 	if !strings.Contains(rs, "tcp dport 443 accept") {
 		t.Error("tcp dport 443 debe estar presente independientemente de port80")
+	}
+}
+
+func TestGenerateRulesetSSHDisabled(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+
+	// Con sshEnabled=true (default)
+	rsEnabled := GenerateRuleset(22, true, geoip, true)
+	if !strings.Contains(rsEnabled, "tcp dport 22 accept") {
+		t.Error("ruleset con sshEnabled=true debe contener tcp dport 22 accept")
+	}
+
+	// Con sshEnabled=false
+	rsDisabled := GenerateRuleset(22, false, geoip, true)
+	if strings.Contains(rsDisabled, "tcp dport 22 accept") {
+		t.Error("ruleset con sshEnabled=false no debe contener tcp dport 22 accept")
+	}
+
+	// Verificar que otros puertos (443, 80) siguen presentes
+	if !strings.Contains(rsDisabled, "tcp dport 443 accept") {
+		t.Error("tcp dport 443 debe estar presente independientemente de sshEnabled")
+	}
+	if !strings.Contains(rsDisabled, "tcp dport 80 accept") {
+		t.Error("tcp dport 80 debe estar presente cuando port80=true")
+	}
+}
+
+func TestGenerateRulesetSSHAndHTTPSSeparateLines(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+	for _, line := range strings.Split(rs, "\n") {
+		if strings.Contains(line, "tcp dport 22 accept") && strings.Contains(line, "tcp dport 443") {
+			t.Fatalf("tcp dport 22 y 443 están fusionados en la misma línea (sintaxis inválida para nft): %q", line)
+		}
 	}
 }
 

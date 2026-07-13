@@ -27,7 +27,34 @@ func New(logger *sys.SMLogger) *GeoIP {
 
 func (g *GeoIP) Order() int   { return 3 }
 func (g *GeoIP) Name() string { return "GeoIP — países permitidos" }
-func (g *GeoIP) Reset()       {}
+
+// Reset borra la config de países permitidos y los zone files descargados.
+// Deliberadamente NO recarga el ruleset en caliente (a diferencia de resetGeoIP()/
+// cliReset()): puede ejecutarse dentro de un Reset Global donde Firewall.Reset() ya
+// borró el ruleset — forzar un reload aquí regeneraría un ruleset nuevo justo cuando
+// el propósito es dejar todo limpio.
+func (g *GeoIP) Reset() {
+	if err := os.Remove(infra.AllowedCountriesFile); err == nil {
+		fmt.Printf("  Eliminado: %s\n", infra.AllowedCountriesFile)
+	} else if os.IsNotExist(err) {
+		fmt.Printf("  No había %s.\n", infra.AllowedCountriesFile)
+	} else {
+		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", infra.AllowedCountriesFile, err)
+	}
+
+	// os.RemoveAll no distingue "no existía" de "existía y se borró" (ambos
+	// retornan nil) — se verifica con Stat antes para no reportar "Eliminado"
+	// sobre un directorio que nunca existió.
+	_, statErr := os.Stat(infra.GeoIPDir)
+	existed := statErr == nil
+	if err := os.RemoveAll(infra.GeoIPDir); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", infra.GeoIPDir, err)
+	} else if existed {
+		fmt.Printf("  Eliminado: %s\n", infra.GeoIPDir)
+	} else {
+		fmt.Printf("  No había %s.\n", infra.GeoIPDir)
+	}
+}
 
 func (g *GeoIP) Menu() {
 	if _, err := os.Stat(infra.ConfDir + "/blocked_countries.conf"); err == nil {
@@ -244,7 +271,7 @@ func (g *GeoIP) previewRuleset() {
 	}
 	sshPort := infra.DetectSSHPort()
 	port80, _ := infra.ReadPort80Option()
-	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
+	ruleset := infra.GenerateRuleset(sshPort, true, geoip, port80)
 
 	fmt.Println("\n  ┌─ Vista previa del ruleset (sm.nft) ─────┐")
 	fmt.Println("  " + strings.Repeat("─", 42))
@@ -265,7 +292,7 @@ func (g *GeoIP) applyGeoIPCore() {
 	}
 	sshPort := infra.DetectSSHPort()
 	port80, _ := infra.ReadPort80Option()
-	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
+	ruleset := infra.GenerateRuleset(sshPort, true, geoip, port80)
 
 	if err := os.MkdirAll(infra.ConfDir, 0o750); err != nil {
 		fmt.Printf("  ERROR: %v\n", err)

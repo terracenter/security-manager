@@ -162,6 +162,14 @@ func resolveFamily(s string) string {
 	}
 }
 
+// ConfirmStrong exige que el usuario escriba una palabra exacta para confirmar
+// una operación crítica/destructiva. Case-insensitive. Retorna false ante
+// cualquier respuesta que no coincida exactamente (fail-safe: no confirmar).
+func ConfirmStrong(readLine func(string) string, prompt string, requiredWord string) bool {
+	resp := readLine(prompt)
+	return strings.EqualFold(strings.TrimSpace(resp), requiredWord)
+}
+
 // OfferInstall informa que los paquetes requeridos no están instalados, muestra el
 // comando y solicita autorización al usuario vía readLine.
 // Retorna true si se instalaron con éxito, false si el usuario rechazó o hubo error.

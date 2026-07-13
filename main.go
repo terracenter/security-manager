@@ -94,7 +94,7 @@ func printMenu(mods []modules.Module) {
 	for i, m := range mods {
 		fmt.Printf("  [%d] %s\n", i+1, m.Name())
 	}
-	fmt.Println("  [R] Reset Global — eliminar tabla inet sm")
+	fmt.Println("  [R] Reset Global — borra TODA la configuración de todos los módulos")
 	fmt.Println("  [0] Salir")
 	fmt.Print("\n  Selección: ")
 }
@@ -114,74 +114,33 @@ func ensureNftablesEnabled(logger *sys.SMLogger) {
 	}
 }
 
-func resetGlobal(scanner *bufio.Scanner, logger *sys.SMLogger) {
-	fmt.Println("\n  ⚠️  ADVERTENCIA: Reset Global eliminará la tabla nftables inet sm de este host.")
-	fmt.Print("  ¿Continuar? (s/n): ")
-	scanner.Scan()
-	if !strings.EqualFold(strings.TrimSpace(scanner.Text()), "s") {
+// resetGlobal ejecuta un reset completo de un solo nivel: no hay reset parcial que
+// deje configuración huérfana. Delega en Reset() de cada módulo (mismo orden que el
+// menú, por Order()) en vez de duplicar lógica de borrado de archivos aquí.
+func resetGlobal(scanner *bufio.Scanner, mods []modules.Module) {
+	fmt.Println("\n  ⚠️  RESET GLOBAL — esto eliminará TODO lo gestionado por Security Manager NG:")
+	fmt.Println("      • Tabla nftables inet sm + ruleset/backup/opciones/puertos (" + infra.ConfDir + ")")
+	fmt.Println("      • Whitelist / Immune (Tier A/B) + jail.d de fail2ban")
+	fmt.Println("      • GeoIP (países permitidos + zone files)")
+	fmt.Println("      • Blacklist (bans manuales)")
+	fmt.Println("      • Sudoers hardening (/etc/sudoers.d/sm-ng)")
+	fmt.Println("      • SSH hardening (/etc/ssh/sshd_config.d/10-sshd-base.conf) — reinicia sshd")
+	fmt.Println("\n  Esta es una operación de UN SOLO NIVEL: no hay reset parcial. Todo lo anterior se borra.")
+	readLine := func(prompt string) string {
+		fmt.Print(prompt)
+		if !scanner.Scan() {
+			return ""
+		}
+		return scanner.Text()
+	}
+	if !sys.ConfirmStrong(readLine, "\n  Escribe 'reset' para confirmar: ", "reset") {
 		fmt.Println("  Operación cancelada.")
 		return
 	}
 
-	fmt.Println("\n  Confirmación final (esta es tu última oportunidad).")
-	fmt.Print("  Escribe 'reset' para confirmar: ")
-	scanner.Scan()
-	if !strings.EqualFold(strings.TrimSpace(scanner.Text()), "reset") {
-		fmt.Println("  Operación cancelada.")
-		return
-	}
-
-	fmt.Println("\n  [reset] Ejecutando nft delete table inet sm...")
-	if _, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
-		logger.Error("No se pudo eliminar la tabla inet sm.", fmt.Sprintf("%v", err))
-	} else {
-		fmt.Println("  [reset] OK — tabla inet sm eliminada.")
-	}
-
-	fmt.Println("  [reset] Borrando /etc/fail2ban/jail.d/sm-ng-whitelist.conf...")
-	if _, err := exec.Command("rm", "-f", "/etc/fail2ban/jail.d/sm-ng-whitelist.conf").CombinedOutput(); err != nil {
-		logger.Error("No se pudo eliminar la configuración de fail2ban.", fmt.Sprintf("%v", err))
-	} else {
-		fmt.Println("  [reset] OK — archivo de ignoreip eliminado.")
-	}
-
-	fmt.Println("  [reset] Recargando fail2ban...")
-	if _, err := exec.Command("fail2ban-client", "reload").CombinedOutput(); err != nil {
-		fmt.Printf("  WARN: fail2ban reload — %v\n", err)
-	} else {
-		fmt.Println("  [reset] OK — fail2ban recargado.")
-	}
-
-	fmt.Print("\n  ¿Purgar también /etc/security-manager/* (todas las configs)? (s/n): ")
-	scanner.Scan()
-	if strings.EqualFold(strings.TrimSpace(scanner.Text()), "s") {
-		fmt.Println("  [reset] Purgando /etc/security-manager/...")
-		if _, err := exec.Command("rm", "-rf", "/etc/security-manager").CombinedOutput(); err != nil {
-			logger.Error("No se pudo purgar /etc/security-manager/.", fmt.Sprintf("%v", err))
-		} else {
-			fmt.Println("  [reset] OK — configuraciones purgadas.")
-		}
-
-		// Limpiar include en /etc/nftables.conf para evitar fallo de nftables.service en boot.
-		fmt.Println("  [reset] Limpiando include de /etc/nftables.conf...")
-		const nftConf = "/etc/nftables.conf"
-		if data, err := os.ReadFile(nftConf); err == nil {
-			var kept []string
-			for _, line := range strings.Split(string(data), "\n") {
-				if !strings.Contains(line, `include "/etc/security-manager/sm.nft"`) &&
-					!strings.Contains(line, "# Security Manager NG") {
-					kept = append(kept, line)
-				}
-			}
-			cleaned := strings.TrimRight(strings.Join(kept, "\n"), "\n") + "\n"
-			if err := os.WriteFile(nftConf, []byte(cleaned), 0o644); err != nil {
-				fmt.Printf("  WARN: no se pudo limpiar %s: %v\n", nftConf, err)
-			} else {
-				fmt.Println("  [reset] OK — include sm.nft eliminado de nftables.conf.")
-			}
-		} else {
-			fmt.Printf("  WARN: no se pudo leer %s: %v\n", nftConf, err)
-		}
+	for _, m := range mods {
+		fmt.Printf("\n  [reset] %s...\n", m.Name())
+		m.Reset()
 	}
 
 	fmt.Println("\n  ✓ Reset Global completado. El host está limpio de Security Manager NG.")
@@ -340,7 +299,7 @@ func main() {
 		}
 
 		if strings.EqualFold(input, "r") {
-			resetGlobal(scanner, logger)
+			resetGlobal(scanner, mods)
 			continue
 		}
 

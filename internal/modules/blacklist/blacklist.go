@@ -25,7 +25,19 @@ func New(logger *sys.SMLogger) *Blacklist {
 
 func (b *Blacklist) Order() int   { return 4 }
 func (b *Blacklist) Name() string { return "Blacklist — Bans manuales" }
-func (b *Blacklist) Reset()       {}
+
+// Reset borra la blacklist persistida (bans manuales).
+func (b *Blacklist) Reset() {
+	for _, path := range []string{infra.Blacklist4File, infra.Blacklist6File} {
+		if err := os.Remove(path); err == nil {
+			fmt.Printf("  Eliminado: %s\n", path)
+		} else if os.IsNotExist(err) {
+			fmt.Printf("  No había %s.\n", path)
+		} else {
+			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+		}
+	}
+}
 
 func (b *Blacklist) Menu() {
 	for {

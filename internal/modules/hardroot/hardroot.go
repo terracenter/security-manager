@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	sshdConfig     = "/etc/ssh/sshd_config"
-	sudoersDir     = "/etc/sudoers.d"
-	sudoersFile    = sudoersDir + "/sm-ng"
-	sudoersContent = `# Security-Manager-NG — hardening sudoers
+	sshdConfig       = "/etc/ssh/sshd_config"
+	sshdConfigBackup = "/etc/security-manager/hardroot_sshd_config.bak"
+	sudoersDir       = "/etc/sudoers.d"
+	sudoersFile      = sudoersDir + "/sm-ng"
+	sudoersContent   = `# Security-Manager-NG — hardening sudoers
 # Generado por sm-ng — no editar manualmente
 Defaults timestamp_timeout=5
 Defaults requiretty
@@ -34,7 +35,64 @@ func New(logger *sys.SMLogger) *HardRoot {
 
 func (h *HardRoot) Order() int   { return 5 }
 func (h *HardRoot) Name() string { return "HardRoot — hardening root + sudoers" }
-func (h *HardRoot) Reset()       {}
+
+// backupSshdConfig respalda sshd_config antes de la primera modificación, para que
+// Reset() pueda restaurarlo verbatim. No sobreescribe un backup ya existente — así
+// conserva el estado real previo al hardening a través de corridas repetidas.
+func backupSshdConfig() error {
+	if _, err := os.Stat(sshdConfigBackup); err == nil {
+		return nil
+	}
+	data, err := os.ReadFile(sshdConfig)
+	if err != nil {
+		return fmt.Errorf("leer %s: %w", sshdConfig, err)
+	}
+	return os.WriteFile(sshdConfigBackup, data, 0o600)
+}
+
+// Reset revierte todo lo que HardRoot mutó: restaura sshd_config a su estado previo
+// al hardening (PermitRootLogin/PermitEmptyPasswords), desbloquea la cuenta root si
+// fue bloqueada (passwd -u root — man passwd confirma que revierte exactamente al
+// valor previo a passwd -l), y borra el sudoers propio del módulo.
+func (h *HardRoot) Reset() {
+	if err := os.Remove(sudoersFile); err == nil {
+		fmt.Printf("  Eliminado: %s\n", sudoersFile)
+	} else if os.IsNotExist(err) {
+		fmt.Println("  No había configuración de sudoers de sm-ng.")
+	} else {
+		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", sudoersFile, err)
+	}
+
+	if data, err := os.ReadFile(sshdConfigBackup); err == nil {
+		tmpFile := sshdConfigBackup + ".restore-tmp"
+		if err := os.WriteFile(tmpFile, data, 0o644); err != nil {
+			fmt.Println("  ADVERTENCIA: no se pudo preparar la restauración de sshd_config.")
+		} else {
+			if out, err := exec.Command("sshd", "-t", "-f", tmpFile).CombinedOutput(); err != nil {
+				fmt.Printf("  ADVERTENCIA: el backup de sshd_config no pasó la validación (%s) — no se restauró.\n",
+					strings.TrimSpace(string(out)))
+			} else if err := os.WriteFile(sshdConfig, data, 0o644); err != nil {
+				fmt.Printf("  ADVERTENCIA: no se pudo restaurar %s: %v\n", sshdConfig, err)
+			} else {
+				if err := reloadSSHD(); err != nil {
+					fmt.Printf("  ADVERTENCIA: sshd_config restaurado pero no se pudo recargar sshd: %v\n", err)
+				} else {
+					fmt.Println("  Restaurado: " + sshdConfig + " a su estado previo — sshd recargado.")
+				}
+				_ = os.Remove(sshdConfigBackup)
+			}
+			os.Remove(tmpFile)
+		}
+	} else if !os.IsNotExist(err) {
+		fmt.Printf("  ADVERTENCIA: no se pudo leer el backup de sshd_config: %v\n", err)
+	}
+
+	if out, err := exec.Command("passwd", "-u", "root").CombinedOutput(); err != nil {
+		fmt.Println("  (info) cuenta root no estaba bloqueada o no se pudo desbloquear: " + strings.TrimSpace(string(out)))
+	} else {
+		fmt.Println("  Cuenta root desbloqueada (passwd -u root) — revertida a su estado previo.")
+	}
+}
 
 func (h *HardRoot) Menu() {
 	for {
@@ -115,6 +173,11 @@ func (h *HardRoot) hardenSSH() {
 	if strings.ToLower(strings.TrimSpace(h.scanner.Text())) != "s" {
 		fmt.Println("  Cancelado.")
 		return
+	}
+
+	if err := backupSshdConfig(); err != nil {
+		fmt.Printf("  ADVERTENCIA: no se pudo respaldar sshd_config antes de modificar (%v) — "+
+			"Reset() no podrá revertir estos cambios automáticamente.\n", err)
 	}
 
 	if err := setSshdOption("PermitRootLogin", "no"); err != nil {

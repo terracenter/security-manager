@@ -25,7 +25,31 @@ func New() *Whitelist {
 
 func (w *Whitelist) Order() int   { return 2 }
 func (w *Whitelist) Name() string { return "Whitelist / SSoT (Confiables / Intocables)" }
-func (w *Whitelist) Reset()       {}
+
+// Reset borra la whitelist/immune (Tier A/B) y el jail.d de fail2ban derivado de ella.
+func (w *Whitelist) Reset() {
+	for _, path := range []string{infra.Whitelist4File, infra.Whitelist6File, infra.Immune4File, infra.Immune6File} {
+		if err := os.Remove(path); err == nil {
+			fmt.Printf("  Eliminado: %s\n", path)
+		} else if os.IsNotExist(err) {
+			fmt.Printf("  No había %s.\n", path)
+		} else {
+			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+		}
+	}
+	if err := os.Remove(fail2banIgnoreipFile); err == nil {
+		fmt.Printf("  Eliminado: %s\n", fail2banIgnoreipFile)
+		if out, err := exec.Command("fail2ban-client", "reload").CombinedOutput(); err != nil {
+			fmt.Printf("  ADVERTENCIA: fail2ban-client reload falló: %s\n", strings.TrimSpace(string(out)))
+		} else {
+			fmt.Println("  fail2ban recargado.")
+		}
+	} else if os.IsNotExist(err) {
+		fmt.Printf("  No había %s.\n", fail2banIgnoreipFile)
+	} else {
+		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", fail2banIgnoreipFile, err)
+	}
+}
 
 // tier parametriza cada nivel de confianza para reusar add/list/delete.
 type tier struct {

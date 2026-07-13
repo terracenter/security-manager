@@ -17,3 +17,7 @@ TASK_LOG.md
 
 # Instrucciones internas del agente (no público)
 CLAUDE.md
+
+# Backups locales de build (safeBackup)
+/*-safeBackup-*
+.nosync

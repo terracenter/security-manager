@@ -28,7 +28,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=$
 chmod +x "${INSTALLER}"
 
 echo "[deploy] Subiendo a ${REMOTE}:~/ ..."
-rsync -av --perms "${BINARY}" "${INSTALLER}" "${REMOTE}:~/"
+rsync -avz --progress --perms "${BINARY}" "${INSTALLER}" "${REMOTE}:~/"
 
 echo ""
 echo "[deploy] OK — binario e instalador subidos a ${REMOTE}:~/"

@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
 	"github.com/terracenter/security-manager-ng/internal/sys"
+	"golang.org/x/term"
 )
 
 // Firewall gestiona el ruleset nftables declarativo (tabla inet sm).
@@ -29,7 +31,28 @@ func New(logger *sys.SMLogger) *Firewall {
 
 func (f *Firewall) Order() int   { return 1 }
 func (f *Firewall) Name() string { return "Firewall (nftables)" }
-func (f *Firewall) Reset()       {}
+
+// Reset elimina la tabla inet sm y toda la configuración persistida del módulo
+// (ruleset, backup, opciones, puertos permitidos, e include en /etc/nftables.conf),
+// para que el siguiente [1] Aplicar corra el wizard de detección de puertos de nuevo
+// en vez de reutilizar silenciosamente la configuración de una corrida anterior.
+func (f *Firewall) Reset() {
+	if out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
+		fmt.Println("  (info) tabla inet sm ya no existía o no se pudo eliminar: " + strings.TrimSpace(string(out)))
+	} else {
+		fmt.Println("  Eliminado: tabla inet sm")
+	}
+	for _, path := range []string{infra.RulesetFile, infra.BackupFile, infra.OptionsFile, infra.AllowedPortsFile} {
+		if err := os.Remove(path); err == nil {
+			fmt.Printf("  Eliminado: %s\n", path)
+		} else if !os.IsNotExist(err) {
+			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+		}
+	}
+	if err := infra.RemoveSmNftPersistence(); err != nil {
+		fmt.Printf("  ADVERTENCIA: %v\n", err)
+	}
+}
 
 func (f *Firewall) Menu() {
 	for {
@@ -170,8 +193,11 @@ func (f *Firewall) applyBase() {
 
 	// FASE 3: Wizard de servicios en primera instalación
 	isFirstInstall := !fileExists(infra.RulesetFile)
+	sshEnabled := true // default
 	if isFirstInstall {
-		if err := f.runServiceWizard(); err != nil {
+		var err error
+		sshEnabled, err = f.runServiceWizard()
+		if err != nil {
 			f.logger.Technical(fmt.Sprintf("wizard abortado: %v", err))
 			return
 		}
@@ -197,7 +223,7 @@ func (f *Firewall) applyBase() {
 	sshPort := infra.DetectSSHPort()
 	geoip, _ := infra.LoadGeoIPData()
 	port80, _ := infra.ReadPort80Option()
-	ruleset := infra.GenerateRuleset(sshPort, geoip, port80)
+	ruleset := infra.GenerateRuleset(sshPort, sshEnabled, geoip, port80)
 
 	svc := infra.DetectGlobalServices()
 	if svc.TailscaleActive {
@@ -394,7 +420,11 @@ func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
 
 // resetTable ejecuta delete table inet sm tras confirmación del operador.
 func (f *Firewall) resetTable() {
-	fmt.Print("\n  ¿Confirmar reset (delete) de la tabla inet sm? [s/N]: ")
+	fmt.Println("\n  ⚠  Esto eliminará: tabla inet sm, " + infra.RulesetFile + ", " +
+		infra.BackupFile + ", " + infra.OptionsFile + ", " + infra.AllowedPortsFile +
+		" y el include en /etc/nftables.conf.")
+	fmt.Println("     El siguiente [1] Aplicar volverá a correr el wizard de detección de puertos.")
+	fmt.Print("  ¿Confirmar? [s/N]: ")
 	if !f.scanner.Scan() {
 		return
 	}
@@ -402,12 +432,7 @@ func (f *Firewall) resetTable() {
 		fmt.Println("  Cancelado.")
 		return
 	}
-	out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
-	if err != nil {
-		f.logger.Error("No se pudo eliminar la tabla inet sm.", strings.TrimSpace(string(out)))
-		return
-	}
-	f.logger.Screen("  ✓ Tabla inet sm eliminada.")
+	f.Reset()
 }
 
 // RunAction implementa modules.CLIModule para modo no interactivo.
@@ -435,13 +460,8 @@ func (f *Firewall) RunAction(action string, args ...string) bool {
 		f.applyBase()
 		return true
 	case "reset":
-		fmt.Println("  [firewall] Eliminando tabla inet sm...")
-		out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
-		if err != nil {
-			f.logger.Error("No se pudo eliminar la tabla inet sm.", strings.TrimSpace(string(out)))
-			return false
-		}
-		fmt.Println("  [firewall] OK — tabla inet sm eliminada.")
+		fmt.Println("  [firewall] Eliminando tabla inet sm y configuración persistida...")
+		f.Reset()
 		return true
 	case "port80":
 		if len(args) == 0 {
@@ -581,20 +601,26 @@ func (f *Firewall) readLine(prompt string) string {
 	return strings.TrimSpace(f.scanner.Text())
 }
 
-// runServiceWizard detecta servicios activos y pregunta cuáles permitir.
-func (f *Firewall) runServiceWizard() error {
-	fmt.Println("\n  Detectando servicios activos...")
-	services, err := sys.DetectListeningServices()
-	if err != nil {
-		f.logger.Error("Error inesperado al detectar servicios.", fmt.Sprintf("%v", err))
-		fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
-		return err
+// buildAllowedEntries arma las líneas de allowed_ports.conf a partir de los servicios
+// seleccionados y el tier elegido (GLOBAL o GEO). Retorna un slice de strings listo
+// para escribir a archivo. Función pura, sin side effects.
+func buildAllowedEntries(selected []sys.ServiceInfo, tier string) []string {
+	var entries []string
+	for _, svc := range selected {
+		procName := svc.ProcessName
+		if procName == "" {
+			procName = "?"
+		}
+		entry := fmt.Sprintf("%d | %s | %s | auto-detect | %s", svc.Port, svc.Proto, tier, time.Now().Format("2006-01-02"))
+		entries = append(entries, entry)
 	}
+	return entries
+}
 
-	if len(services) == 0 {
-		fmt.Println("  No se detectaron servicios activos.")
-		return nil
-	}
+// runSequentialWizard pregunta puerto por puerto (fallback sin TTY).
+// Retorna (sshEnabled, error) para que applyBase() pueda pasar sshEnabled a GenerateRuleset().
+func (f *Firewall) runSequentialWizard(services []sys.ServiceInfo) (bool, error) {
+	sshEnabled := true // default: SSH abierto
 
 	// Crear archivo allowed_ports.conf
 	var entries []string
@@ -640,12 +666,144 @@ func (f *Firewall) runServiceWizard() error {
 			)
 			fmt.Println("     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.")
 			fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
-			return err
+			return false, err
 		}
 		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
 	}
 
-	return nil
+	return sshEnabled, nil
+}
+
+// runInteractiveWizard muestra un menú interactivo con checkboxes (survey.MultiSelect).
+func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error) {
+	sshEnabled := true // default: SSH abierto
+
+	// Construir opciones para MultiSelect (todos los puertos detectados)
+	options := make([]string, 0, len(services))
+	serviceMap := make(map[string]sys.ServiceInfo)
+	for _, svc := range services {
+		procName := svc.ProcessName
+		if procName == "" {
+			procName = "?"
+		}
+		label := fmt.Sprintf("%d (%s)", svc.Port, procName)
+		// Nota especial para puerto 80
+		if svc.Port == 80 {
+			label += " — requerido para renovación Let's Encrypt"
+		}
+		options = append(options, label)
+		serviceMap[label] = svc
+	}
+
+	// Loop de menú — si el usuario no selecciona nada, reintentar
+	var selectedLabels []string
+	for {
+		selectedLabels = nil
+		prompt := &survey.MultiSelect{
+			Message: "  ¿Cuáles puertos deseas permitir? (usa SPACE para marcar, ENTER para confirmar)",
+			Options: options,
+		}
+		if err := survey.AskOne(prompt, &selectedLabels); err != nil {
+			f.logger.Technical(fmt.Sprintf("survey error: %v", err))
+			return false, err
+		}
+		if len(selectedLabels) > 0 {
+			break
+		}
+		fmt.Println("  (no seleccionaste ningún puerto, reintentar)")
+		fmt.Println()
+	}
+
+	// Convertir labels a servicios
+	var selected []sys.ServiceInfo
+	for _, label := range selectedLabels {
+		if svc, ok := serviceMap[label]; ok {
+			selected = append(selected, svc)
+		}
+	}
+
+	// Caso especial: si el usuario NO marcó el puerto 22 (SSH), pedir confirmación fuerte
+	sshInSelection := false
+	for _, svc := range selected {
+		if svc.Port == 22 {
+			sshInSelection = true
+			break
+		}
+	}
+	if !sshInSelection {
+		fmt.Println("\n  ⚠️⚠️⚠️  ADVERTENCIA CRÍTICA  ⚠️⚠️⚠️")
+		fmt.Println("  Estás a punto de CERRAR el puerto SSH (22) en el firewall.")
+		fmt.Println("  Si no tienes otro método de acceso (consola física, IPMI/iDRAC, VPN),")
+		fmt.Println("  PERDERÁS EL ACCESO REMOTO A ESTE SERVIDOR.")
+		fmt.Println()
+		readLine := func(prompt string) string {
+			return f.readLine(prompt)
+		}
+		if !sys.ConfirmStrong(readLine, "  Escribe 'cerrar ssh' para confirmar: ", "cerrar ssh") {
+			fmt.Println("  SSH permanece abierto (no se confirmó el cierre).")
+			fmt.Println()
+			// Forzar SSH en la selección
+			selected = append(selected, sys.ServiceInfo{Port: 22, Proto: "tcp", ProcessName: "sshd"})
+			sshEnabled = true
+		} else {
+			sshEnabled = false
+		}
+	}
+
+	// Preguntar tier una sola vez para el batch completo
+	tierPrompt := &survey.Select{
+		Message: "  ¿Los puertos SELECCIONADOS serán [G]lobal o [R]egional?",
+		Options: []string{"GLOBAL", "GEO (regional)"},
+		Default: "GEO (regional)",
+	}
+	var tierChoice string
+	if err := survey.AskOne(tierPrompt, &tierChoice); err != nil {
+		f.logger.Technical(fmt.Sprintf("survey tier error: %v", err))
+		return false, err
+	}
+	tier := "GEO"
+	if tierChoice == "GLOBAL" {
+		tier = "GLOBAL"
+	}
+
+	// Construir y escribir entries
+	entries := buildAllowedEntries(selected, tier)
+	if len(entries) > 0 {
+		content := strings.Join(entries, "\n") + "\n"
+		if err := os.WriteFile(infra.AllowedPortsFile, []byte(content), 0o640); err != nil {
+			f.logger.Error(
+				fmt.Sprintf("No se pudo guardar la configuración de puertos en %s.", infra.AllowedPortsFile),
+				fmt.Sprintf("%v", err),
+			)
+			fmt.Println("     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.")
+			fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+			return false, err
+		}
+		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
+	}
+
+	return sshEnabled, nil
+}
+
+// runServiceWizard dispatcher — selecciona entre menú interactivo o preguntas secuenciales.
+func (f *Firewall) runServiceWizard() (bool, error) {
+	fmt.Println("\n  Detectando servicios activos...")
+	services, err := sys.DetectListeningServices()
+	if err != nil {
+		f.logger.Error("Error inesperado al detectar servicios.", fmt.Sprintf("%v", err))
+		fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+		return false, err
+	}
+
+	if len(services) == 0 {
+		fmt.Println("  No se detectaron servicios activos.")
+		return true, nil // sin servicios detectados, SSH histórico permanece abierto
+	}
+
+	if isTerminal(os.Stdin) {
+		return f.runInteractiveWizard(services)
+	}
+	return f.runSequentialWizard(services)
 }
 
 // fileExists verifica si un archivo existe.
@@ -656,7 +814,7 @@ func fileExists(path string) bool {
 
 // isTerminal verifica si un file descriptor es un terminal.
 func isTerminal(f *os.File) bool {
-	return exec.Command("test", "-t", fmt.Sprintf("%d", f.Fd())).Run() == nil
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // ipExistsInACL verifica si la IP está en alguno de los archivos ACL.
