@@ -3,7 +3,7 @@
 #
 # Este script vive en el repo (versionado, auditable en GitHub) — léelo antes de correrlo,
 # es corto a propósito. Flujo recomendado de dos pasos:
-#   curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/main/deploy/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh -o install.sh
 #   less install.sh   # revisar antes de ejecutar
 #   SMNG_FROM_RELEASE=1 bash install.sh
 set -e
@@ -26,7 +26,10 @@ GPG_KEY_URL="https://gpg-key.humanbyte.net/sm-ng-release-signing.pub.asc"
 # ── Modo alterno: descargar desde GitHub Release, con verificación GPG obligatoria ────────
 if [[ "${SMNG_FROM_RELEASE}" == "1" ]]; then
     echo "[install] SMNG_FROM_RELEASE=1: descargando desde GitHub Release..."
-    RELEASE_BASE="https://github.com/terracenter/security-manager-ng/releases/latest/download"
+    # Mientras no exista una release estable, "latest" no resuelve (GitHub excluye
+    # pre-releases de /releases/latest) — usar la tag explícita y bumpear en cada release
+    # nueva hasta que haya una estable, momento en que se puede volver a "latest".
+    RELEASE_BASE="https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0"
 
     for dep in curl gpg sha256sum; do
         if ! command -v "${dep}" &>/dev/null; then

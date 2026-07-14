@@ -2,24 +2,74 @@
 
 # Security-Manager-NG
 
-Successor of [Security-Manager-Go](https://github.com/terracenter/Security-Manager-Go) —
-Linux host security manager with **native nftables backend**. SM-Go remains frozen
-as a historical reference.
+![License](https://img.shields.io/badge/license-AGPLv3-blue)
+![Status](https://img.shields.io/badge/status-pre--release-orange)
+![Distros](https://img.shields.io/badge/distros-Debian%20%7C%20Ubuntu%20%7C%20AlmaLinux%20%7C%20Rocky-informational)
+
+Linux host security manager with a **native nftables backend**: a declarative, atomic
+firewall applied from a single static binary, identical across Debian, Ubuntu, AlmaLinux
+and Rocky Linux. Built for sysadmins running multi-distro fleets who need a reproducible,
+auditable ruleset with automatic rollback if something goes wrong (`safe-apply`).
+
+Beyond the firewall it also handles: whitelist/blacklist, per-country GeoIP blocking, SSH
+and root/sudoers hardening, fail2ban monitoring, and optional CrowdSec sync — all from the
+same binary, via an interactive menu or a CLI for automation.
+
+> ⚠️ **Release candidate — under active validation.** See [Current status](#current-status)
+> before using in production.
 
 ---
 
-## Why a new version
+## Quickstart / Usage
 
-SM-Go used UFW as a host for **raw iptables injections** in
-`/etc/ufw/before.rules`, anchored to zone markers. Two structural problems:
+Install: see [Installation from GitHub Releases](#installation-from-github-releases-alternate)
+below (mandatory GPG signature verification included).
 
-1. **Fragile:** rule order depends on markers that must survive between
-   `before/after/user.rules` and UFW reloads.
-2. **Not portable:** AlmaLinux and Rocky Linux don't include UFW in their base repos and
-   conflict with firewalld.
+SM-NG has two coexisting usage modes:
 
-Security-Manager-NG abandons that model. It builds a **declarative, atomic,
-100% SM-owned nftables ruleset**, identical across the four target distro families.
+```bash
+# No arguments → interactive menu (recommended for guided initial setup)
+sudo security-manager-ng
+
+# With arguments → non-interactive CLI (recommended for automation/scripts/cron)
+sudo security-manager-ng firewall allow --port 8080 --proto tcp --tier global --comment "public API"
+sudo security-manager-ng firewall deny  --port 8080 --proto tcp
+
+sudo security-manager-ng whitelist add 203.0.113.5 --tier A --responsable "freddy" --proposito "office"
+
+sudo security-manager-ng geoip add VE CO PE
+
+sudo security-manager-ng blacklist add 198.51.100.7
+
+sudo security-manager-ng firewall estado
+sudo security-manager-ng ssh estado
+
+# Full help (embedded in the binary)
+security-manager-ng --help
+security-manager-ng --version
+```
+
+`--tier global` exposes the port to any IP; `--tier geo` restricts it to the countries
+enabled in GeoIP. In `whitelist add`, `--tier A` is trusted-but-bannable and `--tier B` is
+immune (never gets caught by fail2ban/CrowdSec).
+
+## Demo
+
+```
+# illustrative example of the interactive menu, not a real capture yet
+
+$ sudo security-manager-ng
+
+  Security-Manager-NG — v0.7.0
+  Firewall: inet sm active · 3 GeoIP countries · 12 IPs in whitelist
+
+  [1] Firewall       [5] Root hardening
+  [2] Whitelist      [6] SSH hardening
+  [3] GeoIP          [7] fail2ban (monitoring)
+  [4] Blacklist       [0] Exit
+
+  Select an option:
+```
 
 ---
 
@@ -190,9 +240,12 @@ gpg --keyserver keys.openpgp.org --recv-keys 6D33CBB56A4FA1E2966C402259237301550
 gpg --fingerprint 6D33CBB56A4FA1E2966C40225923730155062949
 
 # Download the binary, checksum, and signature
-curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng -o security-manager-ng
-curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.sha256 -o security-manager-ng.sha256
-curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.asc -o security-manager-ng.asc
+# NOTE: while the project has no stable release yet (see Current status below), use the
+# explicit tag instead of "latest" — check the most recent one at
+# https://github.com/terracenter/Security-Manager-Ng/releases
+curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng -o security-manager-ng
+curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng.sha256 -o security-manager-ng.sha256
+curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng.asc -o security-manager-ng.asc
 
 # Verify the GPG signature (required) and checksum (extra defense)
 gpg --verify security-manager-ng.asc security-manager-ng
