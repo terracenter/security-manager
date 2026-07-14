@@ -159,9 +159,33 @@ usar `go run` en producción — siempre binario compilado.
 
 ### Instalación desde GitHub Releases (alterno)
 
+Cada Release se firma con GPG. **Verificar la firma antes de instalar** — el checksum solo confirma que
+el archivo no se corrompió en la descarga, no que lo publicó el mantenedor real.
+
+**Fingerprint de la llave de firma:** `6D33CBB56A4FA1E2966C40225923730155062949`
+
+La llave pública está disponible en dos fuentes independientes entre sí (y del propio repo, para que un
+compromiso de GitHub no pueda falsificar ambas a la vez):
+- [keys.openpgp.org](https://keys.openpgp.org/search?q=terracenter@gmail.com)
+- [gpg-key.humanbyte.net](https://gpg-key.humanbyte.net)
+
 ```bash
+# Importar la llave pública (desde cualquiera de las dos fuentes)
+gpg --keyserver keys.openpgp.org --recv-keys 6D33CBB56A4FA1E2966C40225923730155062949
+# o: curl -fsSL https://gpg-key.humanbyte.net/sm-ng-release-signing.pub.asc | gpg --import
+
+# Confirmar que el fingerprint importado coincide exactamente con el de arriba
+gpg --fingerprint 6D33CBB56A4FA1E2966C40225923730155062949
+
+# Descargar binario, checksum y firma
 curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng -o security-manager-ng
-sha256sum -c security-manager-ng.sha256   # verificar contra el checksum publicado en el Release
+curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.sha256 -o security-manager-ng.sha256
+curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.asc -o security-manager-ng.asc
+
+# Verificar firma GPG (obligatorio) y checksum (defensa adicional)
+gpg --verify security-manager-ng.asc security-manager-ng
+sha256sum -c security-manager-ng.sha256
+
 sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
 ```
 

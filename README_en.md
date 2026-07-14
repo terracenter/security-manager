@@ -171,9 +171,33 @@ sudo nft list set inet sm sm_whitelist4
 
 ### Installation from GitHub Releases (alternate)
 
+Every Release is GPG-signed. **Verify the signature before installing** — the checksum only confirms
+the file wasn't corrupted in transit, not that the real maintainer published it.
+
+**Release signing key fingerprint:** `6D33CBB56A4FA1E2966C40225923730155062949`
+
+The public key is available from two sources independent of each other (and of this repo itself, so a
+GitHub compromise alone can't forge both at once):
+- [keys.openpgp.org](https://keys.openpgp.org/search?q=terracenter@gmail.com)
+- [gpg-key.humanbyte.net](https://gpg-key.humanbyte.net)
+
 ```bash
+# Import the public key (from either source)
+gpg --keyserver keys.openpgp.org --recv-keys 6D33CBB56A4FA1E2966C40225923730155062949
+# or: curl -fsSL https://gpg-key.humanbyte.net/sm-ng-release-signing.pub.asc | gpg --import
+
+# Confirm the imported fingerprint matches the one above exactly
+gpg --fingerprint 6D33CBB56A4FA1E2966C40225923730155062949
+
+# Download the binary, checksum, and signature
 curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng -o security-manager-ng
-sha256sum -c security-manager-ng.sha256   # verify against the checksum published in the Release
+curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.sha256 -o security-manager-ng.sha256
+curl -sL https://github.com/terracenter/security-manager-ng/releases/latest/download/security-manager-ng.asc -o security-manager-ng.asc
+
+# Verify the GPG signature (required) and checksum (extra defense)
+gpg --verify security-manager-ng.asc security-manager-ng
+sha256sum -c security-manager-ng.sha256
+
 sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
 ```
 
