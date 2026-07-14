@@ -215,7 +215,11 @@ sudo nft list set inet sm sm_whitelist4
 
 ## Estado actual
 
-✅ **En desarrollo activo, funcional — no publicado en `main` todavía.**
+✅ **En desarrollo activo, funcional — repo público, no publicado en `main` todavía.**
+
+⚠️ **Release candidate — en validación activa, reporta bugs.** Los Releases se publican marcados como
+pre-release hasta cerrar la validación en un host real de producción (BLOQUE B-SM-B1). No los uses en
+producción sin revisar el estado de esa validación primero.
 
 - **Módulos completos** (menú interactivo + CLI): `firewall` (ruleset nftables declarativo +
   safe-apply), `whitelist` (Tier A/B, sincroniza CrowdSec y fail2ban), `geoip` (allowlist por

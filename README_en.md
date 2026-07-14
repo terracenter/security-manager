@@ -215,7 +215,11 @@ sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security
 
 ## Current status
 
-✅ **In active development, functional — not yet published to `main`.**
+✅ **In active development, functional — public repo, not yet published to `main`.**
+
+⚠️ **Release candidate — under active validation, please report bugs.** Releases are published marked
+as pre-release until validation on a real production host completes (BLOQUE B-SM-B1). Don't use in
+production without checking that validation's status first.
 
 - **Complete modules** (interactive menu + CLI): `firewall` (declarative nftables ruleset +
   safe-apply), `whitelist` (Tier A/B, syncs CrowdSec and fail2ban), `geoip` (allowlist per

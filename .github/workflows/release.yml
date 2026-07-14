@@ -35,6 +35,17 @@ jobs:
       - name: Publicar en GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: true
+          body: |
+            ⚠️ **Release candidate — en validación activa, reporta bugs.**
+
+            Este binario está firmado manualmente por el mantenedor después de esta build automática
+            (la llave privada de firma nunca toca CI/CD). La firma (`security-manager-ng.asc`) se
+            adjunta a este Release como asset adicional una vez publicado — si no la ves todavía,
+            espera unos minutos o revisa que el mantenedor ya la subió antes de confiar en el binario.
+
+            Verificación antes de instalar: ver sección "Instalación desde GitHub Releases" del
+            `README.md`.
           files: |
             security-manager-ng
             security-manager-ng.sha256
