@@ -21,3 +21,6 @@ CLAUDE.md
 # Backups locales de build (safeBackup)
 /*-safeBackup-*
 .nosync
+
+# Salida local de graphify (grafo de conocimiento, herramienta de agente)
+/graphify-out/
