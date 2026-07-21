@@ -221,10 +221,19 @@ sudo nft list set inet sm sm_whitelist4
 
 ### Installation from GitHub Releases (alternate)
 
-Every Release is GPG-signed. **Verify the signature before installing** — the checksum only confirms
-the file wasn't corrupted in transit, not that the real maintainer published it.
+Every Release is GPG-signed. Signature verification is **mandatory and automatic** — the installer
+aborts on its own if it fails; it doesn't depend on the user reviewing it by hand.
 
 **Release signing key fingerprint:** `6D33CBB56A4FA1E2966C40225923730155062949`
+
+**One-command install** (downloads, verifies GPG + checksum, and installs):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+```
+
+<details>
+<summary>Manual installation (step-by-step audit, for anyone who prefers to review each verification)</summary>
 
 The public key is available from two sources independent of each other (and of this repo itself, so a
 GitHub compromise alone can't forge both at once):
@@ -253,6 +262,8 @@ sha256sum -c security-manager-ng.sha256
 
 sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
 ```
+
+</details>
 
 ---
 
