@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Instalador de security-manager-ng — ejecutar como usuario normal (usa sudo internamente)
 #
-# Este script vive en el repo (versionado, auditable en GitHub) — léelo antes de correrlo,
-# es corto a propósito. Flujo recomendado de dos pasos:
+# Este script vive en el repo (versionado, auditable en GitHub). Instalación en un solo comando:
+#   curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+#
+# La verificación real de seguridad ocurre DENTRO de este script (firma GPG + checksum del
+# binario, fingerprint fijo) — no depende de que revises el script antes de correrlo. Si prefieres
+# auditar el script primero de todos modos:
 #   curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh -o install.sh
 #   less install.sh   # revisar antes de ejecutar
 #   SMNG_FROM_RELEASE=1 bash install.sh
