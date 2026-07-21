@@ -232,6 +232,12 @@ aborts on its own if it fails; it doesn't depend on the user reviewing it by han
 curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
 ```
 
+**Important:** run this as a normal user, **never** with `sudo` in front of the command — the
+script aborts on its own if it detects it's running as root directly (it requires a normal user +
+internal `sudo`). The script will prompt for your `sudo` password right at the moment it copies
+the binary to `/usr/local/sbin/` — that's expected, just answer it. This requires a real
+interactive terminal (it won't work in CI/automation without a connected tty).
+
 <details>
 <summary>Manual installation (step-by-step audit, for anyone who prefers to review each verification)</summary>
 

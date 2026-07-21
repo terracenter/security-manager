@@ -220,6 +220,12 @@ instalador aborta solo si falla, no depende de que el usuario la revise a mano.
 curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
 ```
 
+**Importante:** ejecuta esto como usuario normal, **nunca** con `sudo` por delante del comando —
+el script se auto-aborta si detecta que corre como root directo (exige usuario normal + `sudo`
+interno). El propio script te pedirá tu password de `sudo` justo en el momento de copiar el
+binario a `/usr/local/sbin/` — es esperado, respóndelo normalmente. Esto requiere una terminal
+interactiva real (no funciona en CI/automatización sin tty conectada).
+
 <details>
 <summary>Instalación manual (auditoría paso a paso, para quien prefiera revisar cada verificación)</summary>
 
