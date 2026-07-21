@@ -209,10 +209,19 @@ usar `go run` en producción — siempre binario compilado.
 
 ### Instalación desde GitHub Releases (alterno)
 
-Cada Release se firma con GPG. **Verificar la firma antes de instalar** — el checksum solo confirma que
-el archivo no se corrompió en la descarga, no que lo publicó el mantenedor real.
+Cada Release se firma con GPG. La verificación de la firma es **obligatoria y automática** — el
+instalador aborta solo si falla, no depende de que el usuario la revise a mano.
 
 **Fingerprint de la llave de firma:** `6D33CBB56A4FA1E2966C40225923730155062949`
+
+**Instalación en un solo comando** (descarga, verifica GPG + checksum, e instala):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+```
+
+<details>
+<summary>Instalación manual (auditoría paso a paso, para quien prefiera revisar cada verificación)</summary>
 
 La llave pública está disponible en dos fuentes independientes entre sí (y del propio repo, para que un
 compromiso de GitHub no pueda falsificar ambas a la vez):
@@ -241,6 +250,8 @@ sha256sum -c security-manager-ng.sha256
 
 sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
 ```
+
+</details>
 
 ### Validar el ruleset antes de aplicar
 
