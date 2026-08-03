@@ -125,3 +125,23 @@ func TestReadACLEntries(t *testing.T) {
 		t.Errorf("ACLAddresses incorrecto: %v", addrs)
 	}
 }
+
+// FIX P3: verifica que GenerateRuleset emite la keyword `comment` de nft
+// en las reglas de excepciones globales (LetsEncrypt, WireGuard, OpenVPN,
+// Tailscale).
+func TestGenerateRulesetNftComments(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	mustContainComment := []string{
+		`comment "LetsEncrypt-HTTP01"`,
+		`comment "Tailscale-mgmt"`,
+	}
+	for _, want := range mustContainComment {
+		if !strings.Contains(rs, want) {
+			t.Errorf("ruleset no contiene %q (comment keyword)", want)
+		}
+	}
+}

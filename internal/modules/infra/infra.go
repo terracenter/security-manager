@@ -579,28 +579,37 @@ func RemovePortEntry(port int, proto string) error {
 
 // globalExceptionsBlock genera las reglas de excepción de puertos para servicios VPN
 // y puertos adicionales abiertos por el operador vía CLI.
+// FIX P3: agrega keyword `comment` de nft (además del #) para que `nft list ruleset`
+// muestre la descripción de cada regla, mejorando la auditoría y el inspect.
 func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) string {
 	var sb strings.Builder
 	if port80 {
-		sb.WriteString("        tcp dport 80 accept   # Let's Encrypt HTTP-01 (global — ACME valida desde cualquier país)\n")
+		sb.WriteString("        tcp dport 80 accept comment \"LetsEncrypt-HTTP01\"   # Let's Encrypt HTTP-01 (global - ACME valida desde cualquier pais)\n")
 	}
 	for _, port := range svc.WireGuardPorts {
-		sb.WriteString(fmt.Sprintf("        udp dport %d accept   # WireGuard (auto-detectado)\n", port))
+		sb.WriteString(fmt.Sprintf("        udp dport %d accept comment \"WireGuard-auto\"   # WireGuard (auto-detectado)\n", port))
 	}
 	for _, rule := range svc.OpenVPNRules {
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment \"OpenVPN-auto\"   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
 	}
 	for _, pe := range ports {
 		comment := pe.Comment
 		if comment == "" {
-			comment = "abierto vía CLI"
+			comment = "abierto via CLI"
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # %s\n", pe.Proto, pe.Port, comment))
+		// Slug del comment: lowercase, espacios a guiones, max 32 chars (limite de nft).
+		slug := strings.ToLower(comment)
+		slug = strings.ReplaceAll(slug, " ", "-")
+		if len(slug) > 32 {
+			slug = slug[:32]
+		}
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 
 // geoRestrictedServicesBlock genera reglas de puertos restringidos por GeoIP (stage 8).
+// FIX P3: agrega keyword `comment` de nft (además del #).
 func geoRestrictedServicesBlock(ports []PortEntry) string {
 	if len(ports) == 0 {
 		return ""
@@ -609,9 +618,14 @@ func geoRestrictedServicesBlock(ports []PortEntry) string {
 	for _, pe := range ports {
 		comment := pe.Comment
 		if comment == "" {
-			comment = "restringido por país"
+			comment = "restringido por pais"
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept   # %s\n", pe.Proto, pe.Port, comment))
+		slug := strings.ToLower(comment)
+		slug = strings.ReplaceAll(slug, " ", "-")
+		if len(slug) > 32 {
+			slug = slug[:32]
+		}
+		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -662,7 +676,7 @@ func GenerateRuleset(sshPort int, sshEnabled bool, geoip GeoIPData, port80 bool)
 
 	tailscaleRule := ""
 	if svc.TailscaleActive {
-		tailscaleRule = "\n        iif \"tailscale0\" accept   # Tailscale (red de gestión — auto-detectado)"
+		tailscaleRule = "\n        iif \"tailscale0\" accept comment \"Tailscale-mgmt\"   # Tailscale (red de gestion, auto-detectado)"
 	}
 
 	wlEntries4, _ := ReadACLEntries(Whitelist4File)
