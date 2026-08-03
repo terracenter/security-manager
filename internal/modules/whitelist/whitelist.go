@@ -411,6 +411,11 @@ func SyncImmuneTier() error {
 		} else {
 			fmt.Println("  ✓  IMMUNE tier sincronizado a CrowdSec.")
 		}
+		// FIX P2.1: limpiar IPs obsoletas del allowlist de CrowdSec.
+		// Sin esto, el allowlist acumula entradas para siempre.
+		if err := crowdsec.RemoveFromAllowlist(immuneFiles); err != nil {
+			fmt.Printf("  ⚠  Error limpiando allowlist CrowdSec: %v\n", err)
+		}
 		return nil
 	}
 
