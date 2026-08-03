@@ -33,52 +33,6 @@ SRC="${HOME}/${BINARY}"
 SIGNING_KEY_FINGERPRINT="6D33CBB56A4FA1E2966C40225923730155062949"
 GPG_KEY_URL="https://gpg-key.humanbyte.net/sm-ng-release-signing.pub.asc"
 
-# ── Modo dev: descargar desde la rama `binarios-dev` del repo (sin GPG, con SHA256) ─────
-# Modo para pruebas: el usuario acepta que el binario puede tener bugs porque es de dev.
-# Se baja de raw.githubusercontent.com la rama `binarios-dev` (mantenida por el workflow
-# .github/workflows/build-dev-binary.yml que compila en cada push a `dev`).
-# Uso: SMNG_FROM_BRANCH=dev bash install.sh
-if [[ "${SMNG_FROM_BRANCH:-}" != "" ]]; then
-    BRANCH="${SMNG_FROM_BRANCH}"
-    # Por ahora solo soportamos binarios-dev (la rama donde el workflow pushea).
-    if [[ "${BRANCH}" != "binarios-dev" ]]; then
-        echo "ERROR: SMNG_FROM_BRANCH=${BRANCH} no soportado. Usar 'binarios-dev'." >&2
-        exit 1
-    fi
-    BASE="https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/${BRANCH}"
-
-    for dep in curl sha256sum; do
-        if ! command -v "${dep}" &>/dev/null; then
-            echo "ERROR: falta '${dep}' — necesario para descargar y verificar el binario." >&2
-            exit 1
-        fi
-    done
-
-    TMP_DIR="$(mktemp -d)"
-    trap 'rm -rf "${TMP_DIR}"' EXIT
-
-    echo "[install] SMNG_FROM_BRANCH=${BRANCH}: descargando binario desde raw..."
-    echo "[install] ADVERTENCIA: binario de rama dev, sin firma GPG. PUEDE TENER BUGS."
-
-    for f in "${BINARY}" "${BINARY}.sha256"; do
-        if ! curl -fsSL "${BASE}/${f}" -o "${TMP_DIR}/${f}"; then
-            echo "ERROR: no se pudo descargar ${f} desde ${BASE}" >&2
-            echo "       Verifica que el workflow build-dev-binary haya corrido en dev y subido a binarios-dev." >&2
-            exit 1
-        fi
-    done
-
-    echo "[install] Verificando SHA256 (sin GPG en modo dev)..."
-    if ! ( cd "${TMP_DIR}" && sha256sum -c "${BINARY}.sha256" ); then
-        echo "ERROR: el checksum no coincide. Abortando." >&2
-        exit 1
-    fi
-
-    cp "${TMP_DIR}/${BINARY}" "${SRC}"
-    chmod +x "${SRC}"
-    echo "[install] Binario de ${BRANCH} verificado y listo en ${SRC}"
-fi
-
 # ── Modo alterno: descargar desde GitHub Release, con verificación GPG obligatoria ────────
 if [[ "${SMNG_FROM_RELEASE}" == "1" ]]; then
     echo "[install] SMNG_FROM_RELEASE=1: descargando desde GitHub Release..."

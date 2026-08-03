@@ -1,23 +1,25 @@
 name: Build dev binary
 
-# Compila el binario en cada push a `dev` y commitea el artefacto a la rama
-# `binarios-dev` del mismo repo. Asi `install.sh SMNG_FROM_BRANCH=dev` puede
-# bajar el ultimo binario de dev con `curl` desde raw.githubusercontent.com,
-# sin pasar por Releases taggeados (modo dev, sin GPG, se sobreescribe).
+# Compila el binario en cada push a `dev` y lo sube como artifact de GitHub Actions.
+# NO crea ramas nuevas, NO hace releases. Solo el artifact que Freddy descarga
+# desde la UI web (Actions > Build dev binary > run > Artifacts) o via gh CLI.
+# Politica: solo `dev` y `main` tienen CI/CD en este repo. No se crean ramas
+# auxiliares.
 
 on:
   push:
     branches:
       - dev
+  workflow_dispatch:  # permite correr manualmente desde la UI
 
 permissions:
-  contents: write  # necesario para pushear a la rama binarios-dev
+  contents: read  # solo lectura, NO se commitea nada
 
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dev
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: dev
@@ -32,6 +34,7 @@ jobs:
         run: |
           COMMIT=$(git rev-parse --short HEAD)
           VERSION="dev-${COMMIT}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -ldflags="-s -w -X main.Version=${VERSION}" \
             -o security-manager-ng .
@@ -39,25 +42,12 @@ jobs:
       - name: Generar SHA256
         run: sha256sum security-manager-ng > security-manager-ng.sha256
 
-      - name: Checkout rama binarios-dev
-        uses: actions/checkout@v4
+      - name: Subir artifact (90 dias)
+        uses: actions/upload-artifact@v4
         with:
-          ref: binarios-dev
-          path: binarios-dev
-          fetch-depth: 1
-
-      - name: Publicar binario en binarios-dev
-        run: |
-          cd binarios-dev
-          cp ../security-manager-ng ./security-manager-ng
-          cp ../security-manager-ng.sha256 ./security-manager-ng.sha256
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add security-manager-ng security-manager-ng.sha256
-          if git diff --staged --quiet; then
-            echo "Sin cambios en el binario (commit identico al anterior). Nada que hacer."
-            exit 0
-          fi
-          git commit -m "binario dev-${COMMIT}: build de $(git log -1 --format='%h %s' HEAD~1 || echo 'init')"
-          git push origin binarios-dev
-          echo "Binario actualizado en binarios-dev."
+          name: sm-ng-dev-${{ env.VERSION }}
+          path: |
+            security-manager-ng
+            security-manager-ng.sha256
+          retention-days: 90
+          if-no-files-found: error
