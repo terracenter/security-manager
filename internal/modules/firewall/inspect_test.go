@@ -309,12 +309,9 @@ chain input {
 }
 
 // 11. detectAntirecon -> antirecon
-// NOTA: el detector busca "tcp flags" Y "limit rate 5/minute" en la
-// MISMA linea. nft en output normal imprime ambas partes con un
-// backslash-continuacion (\) si son largas. Este test valida el caso
-// "single-line" (lo que `nft -s` o nft antiguo muestra). Para el caso
-// multi-linea se necesita adaptar el detector (TODO).
-func TestDetectAntirecon_Presente(t *testing.T) {
+// El detector (post-fix Tarea 14) soporta tanto el caso single-line como
+// multi-linea con backslash-continuacion (output normal de nft list).
+func TestDetectAntirecon_SingleLine(t *testing.T) {
 	raw := `
 chain input {
     tcp flags & (fin|syn|rst|psh|ack|urg) == fin|syn|rst|psh|ack|urg limit rate 5/minute log prefix "SM-ANTIRECON XMAS " drop
@@ -322,7 +319,21 @@ chain input {
 `
 	got := runDetector(t, raw)
 	if !hasPattern(got, "antirecon") {
-		t.Errorf("esperaba antirecon, obtuvo: %+v", got)
+		t.Errorf("esperaba antirecon (single-line), obtuvo: %+v", got)
+	}
+}
+
+// Caso real: nft list imprime la regla en 2 lineas con "\\" de continuacion.
+func TestDetectAntirecon_MultiLine(t *testing.T) {
+	raw := `
+chain input {
+    tcp flags & (fin|syn|rst|psh|ack|urg) == fin|syn|rst|psh|ack|urg \
+        limit rate 5/minute log prefix "SM-ANTIRECON XMAS " drop
+}
+`
+	got := runDetector(t, raw)
+	if !hasPattern(got, "antirecon") {
+		t.Errorf("esperaba antirecon (multi-line), obtuvo: %+v", got)
 	}
 }
 

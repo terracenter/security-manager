@@ -145,3 +145,36 @@ func TestGenerateRulesetNftComments(t *testing.T) {
 		}
 	}
 }
+
+// FIX P14 (Tarea 14): verifica que el ruleset base (9 stages del template
+// principal) tiene `comment "sm-..."` en CADA regla, no solo en las
+// excepciones globales. Esto es lo que documenta cada regla en `nft list`
+// para auditoria y para el modulo inspect().
+func TestGenerateRulesetBaseRulesHaveComment(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	// Stages 1-9 del template principal. Cada regla tiene un slug "sm-*".
+	mustHaveComment := []string{
+		`comment "sm-fastpath"`,                   // Stage 1: conntrack
+		`comment "sm-invalid-drop"`,               // Stage 3: conntrack invalid
+		`comment "sm-antirecon-xmas"`,             // Stage 4: antirecon
+		`comment "sm-antirecon-null"`,
+		`comment "sm-antirecon-finsyn"`,
+		`comment "sm-antirecon-synrst"`,
+		`comment "sm-blacklist4"`,                 // Stage 5: blacklist
+		`comment "sm-whitelist4"`,                 // Stage 6: whitelist/immune
+		`comment "sm-whitelist6"`,
+		`comment "sm-immune4"`,
+		`comment "sm-immune6"`,
+		`comment "sm-https-global"`,               // Stage 8: HTTPS
+		`comment "sm-default-drop"`,               // Stage 9: default DROP
+	}
+	for _, want := range mustHaveComment {
+		if !strings.Contains(rs, want) {
+			t.Errorf("ruleset base NO contiene comment %q (Tarea 14)", want)
+		}
+	}
+}

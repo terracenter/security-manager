@@ -713,36 +713,36 @@ table inet sm {
         type filter hook input priority filter; policy drop;
 
         # 1 · Conntrack fast-path
-        ct state established,related accept
+        ct state established,related accept comment "sm-fastpath"
 
         # 2 · Loopback (+ interfaces de gestión auto-detectadas)
         iif lo accept%s
 
         # 3 · Conntrack inválido
-        ct state invalid drop
+        ct state invalid drop comment "sm-invalid-drop"
 
         # 4 · Antirecon — XMAS, NULL, FIN+SYN, SYN+RST
         tcp flags & (fin|syn|rst|psh|ack|urg) == fin|syn|rst|psh|ack|urg \
-            limit rate 5/minute log prefix "SM-ANTIRECON XMAS " drop
+            limit rate 5/minute log prefix "SM-ANTIRECON XMAS " drop comment "sm-antirecon-xmas"
         tcp flags & (fin|syn|rst|psh|ack|urg) == 0x0 \
-            limit rate 5/minute log prefix "SM-ANTIRECON NULL " drop
+            limit rate 5/minute log prefix "SM-ANTIRECON NULL " drop comment "sm-antirecon-null"
         tcp flags & (fin|syn) == fin|syn \
-            limit rate 5/minute log prefix "SM-ANTIRECON FIN+SYN " drop
+            limit rate 5/minute log prefix "SM-ANTIRECON FIN+SYN " drop comment "sm-antirecon-finsyn"
         tcp flags & (syn|rst) == syn|rst \
-            limit rate 5/minute log prefix "SM-ANTIRECON SYN+RST " drop
+            limit rate 5/minute log prefix "SM-ANTIRECON SYN+RST " drop comment "sm-antirecon-synrst"
 
         # 5 · Blacklist (antes que whitelist)
-        ip  saddr @%s drop
-        ip6 saddr @%s drop
+        ip  saddr @%s drop comment "sm-blacklist4"
+        ip6 saddr @%s drop comment "sm-blacklist6"
 %s
         # 6 · Confiables (Tier A) + Intocables (Tier B) — bypass de GeoIP/puertos
         #     Tier A: fail2ban SÍ puede banearlas (no van a ignoreip).
         #     Tier B: fail2ban JAMÁS las banea (sincronizadas a ignoreip).
         #     La distinción Tier A/B vive en fail2ban, no en este accept.
-        ip  saddr @%s accept
-        ip6 saddr @%s accept
-        ip  saddr @%s accept
-        ip6 saddr @%s accept
+        ip  saddr @%s accept comment "sm-whitelist4"
+        ip6 saddr @%s accept comment "sm-whitelist6"
+        ip  saddr @%s accept comment "sm-immune4"
+        ip6 saddr @%s accept comment "sm-immune6"
 
         # 7 · GeoIP ALLOWLIST + excepciones mundiales (VPN auto-detectada)
 %s
@@ -752,12 +752,12 @@ table inet sm {
         #     Para acceso GLOBAL a SSH/443 (LAN, IP fija, proveedor), agregar la IP
         #     a Confiables/Intocables (stage 6) — NO abrir estos puertos al mundo.
         #     (El puerto 80 está en stage 7a, global, solo para Let's Encrypt HTTP-01.)
-%s        tcp dport 443 accept   # HTTPS country-restricted; whitelist la IP para acceso global
+%s        tcp dport 443 accept comment "sm-https-global"   # HTTPS country-restricted; whitelist la IP para acceso global
 %s        icmp   type echo-request limit rate 10/second accept
         icmpv6 type echo-request limit rate 10/second accept
 
         # 9 · Default DROP
-        log prefix "SM-DROP-DEFAULT " drop
+        log prefix "SM-DROP-DEFAULT " drop comment "sm-default-drop"
     }
 
     chain postrouting {

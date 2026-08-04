@@ -266,8 +266,16 @@ func (d *patternDetector) detectCrowdsecDrops() {
 }
 
 // detectAntirecon detecta las reglas anti-recon con flags malformados (stage 4).
+// FIX 2026-08-04 (Tarea 14): el detector original buscaba "tcp flags" Y
+// "limit rate 5/minute" en la MISMA linea. nft en output normal imprime
+// estas reglas en 2 lineas continuadas con "\\". Ahora pre-procesamos el
+// output: colapsamos las continuaciones `\\<newline>` en una sola linea
+// antes de buscar. Asi funciona tanto para output single-line (nft -s)
+// como para output normal con \\ de continuacion.
 func (d *patternDetector) detectAntirecon() {
-	for _, line := range d.lines {
+	// Colapsar continuaciones de linea (nft pone \ al final si la regla es larga).
+	collapsed := collapseLineContinuations(d.raw)
+	for _, line := range strings.Split(collapsed, "\n") {
 		if strings.Contains(line, "tcp flags") && strings.Contains(line, "limit rate 5/minute") {
 			d.patterns = append(d.patterns, PatternDetected{
 				Name:        "antirecon",
@@ -278,6 +286,31 @@ func (d *patternDetector) detectAntirecon() {
 			return
 		}
 	}
+}
+
+// collapseLineContinuaciones une lineas que terminan en "\\" con la siguiente.
+// En bash y en nft list output, "\\<newline>" significa "continuacion".
+// Ej: "tcp flags \\\n    limit rate ..." se vuelve "tcp flags limit rate ...".
+func collapseLineContinuations(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		// Detectar "\\" seguido de newline (dos caracteres: backslash y \n).
+		if i+1 < len(s) && s[i] == '\\' && s[i+1] == '\n' {
+			// Saltar el "\\" y el newline, continuar con la siguiente linea.
+			i += 2
+			// Saltar espacios/tabs al inicio de la linea de continuacion.
+			for i < len(s) && (s[i] == ' ' || s[i] == '	') {
+				i++
+			}
+			b.WriteByte(' ')  // reemplazar "\\<newline>" por un espacio.
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 // detectDefaultDropLog detecta log prefix "SM-DROP-DEFAULT" en stage 9.
