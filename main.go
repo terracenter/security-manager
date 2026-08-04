@@ -10,7 +10,6 @@ import (
 
 	"github.com/terracenter/security-manager-ng/internal/modules"
 	"github.com/terracenter/security-manager-ng/internal/modules/blacklist"
-	"github.com/terracenter/security-manager-ng/internal/modules/fail2ban"
 	"github.com/terracenter/security-manager-ng/internal/modules/firewall"
 	"github.com/terracenter/security-manager-ng/internal/modules/geoip"
 	"github.com/terracenter/security-manager-ng/internal/modules/hardroot"
@@ -63,7 +62,8 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 		blacklist.New(logger),
 		hardroot.New(logger),
 		ssh.New(),
-		fail2ban.New(),
+		// Tarea 12: fail2ban fue removido en favor de crowdsec.
+		// crowdsec ya tiene su modulo (`internal/modules/crowdsec`).
 	}
 	sort.Slice(mods, func(i, j int) bool {
 		return mods[i].Order() < mods[j].Order()
@@ -120,7 +120,7 @@ func ensureNftablesEnabled(logger *sys.SMLogger) {
 func resetGlobal(scanner *bufio.Scanner, mods []modules.Module) {
 	fmt.Println("\n  ⚠️  RESET GLOBAL — esto eliminará TODO lo gestionado por Security Manager NG:")
 	fmt.Println("      • Tabla nftables inet sm + ruleset/backup/opciones/puertos (" + infra.ConfDir + ")")
-	fmt.Println("      • Whitelist / Immune (Tier A/B) + jail.d de fail2ban")
+	fmt.Println("      • Whitelist / Immune (Tier A/B) + allowlist de crowdsec")
 	fmt.Println("      • GeoIP (países permitidos + zone files)")
 	fmt.Println("      • Blacklist (bans manuales)")
 	fmt.Println("      • Sudoers hardening (/etc/sudoers.d/sm-ng)")
@@ -195,7 +195,7 @@ func handleCLI(args []string, logger *sys.SMLogger) int {
 
 	if matched == nil {
 		fmt.Fprintf(os.Stderr, "  Módulo '%s' no encontrado.\n", args[0])
-		fmt.Fprintf(os.Stderr, "  Módulos disponibles: firewall, whitelist, geoip, blacklist, hardroot, ssh, fail2ban\n")
+		fmt.Fprintf(os.Stderr, "  Módulos disponibles: firewall, whitelist, geoip, blacklist, hardroot, ssh, crowdsec\n")
 		return 1
 	}
 
@@ -230,18 +230,12 @@ func printCLIHelp() {
 	fmt.Println("    reset                                                 Elimina tabla inet sm")
 	fmt.Println("    port80     on|off                                     Puerto 80 global (ACME/Let's Encrypt)")
 	fmt.Println()
-	fmt.Println("  fail2ban")
-	fmt.Println("    buscar <ip>                                           Diagnóstico completo: fail2ban + nftables")
-	fmt.Println("    baneadas [--jail J]                                   IPs baneadas (todos los jails o uno)")
-	fmt.Println("    estado                                                Estado del servicio y jails activos")
-	fmt.Println("    geo <ip>                                              Geolocalización vía ipinfo.io")
-	fmt.Println()
 	fmt.Println("  whitelist")
 	fmt.Println("    add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]")
 	fmt.Println("    add-self  --tier A|B                                  Agregar IP de sesión SSH activa")
 	fmt.Println("    list      [--tier A|B]                                Listar entradas (A=confiables, B=intocables)")
 	fmt.Println("    del  <ip> --tier A|B                                  Eliminar entrada")
-	fmt.Println("    sync                                                  Sincronizar Tier B → fail2ban ignoreip")
+	fmt.Println("    sync                                                  Sincronizar Tier B → crowdsec allowlist")
 	fmt.Println()
 	fmt.Println("  geoip")
 	fmt.Println("    add <CC...>                                           Agregar países permitidos (ej: VE CO PE)")
