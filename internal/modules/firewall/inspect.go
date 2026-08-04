@@ -129,7 +129,12 @@ func (d *patternDetector) detectChainPostrouting() {
 	// La cadena postrouting existe por default en GenerateRuleset (linea
 	// "chain postrouting { type nat hook postrouting priority srcnat; }").
 	// Lo que indica NAT activo son las REGLAS dentro (snat to, masquerade).
-	re := regexp.MustCompile(`(?m)^\s*snat\s+to`)
+	// FIX 2026-08-04 (Tarea 11): el regex original era `^\s*snat\s+to` con `(?m)`,
+	// pero eso requeria "snat" al inicio de la linea, no inline. Como nft
+	// puede poner `oifname "eth0" snat to 1.2.3.4` (snat no inicia la linea),
+	// el detector nunca matcheaba. Sin `^\s*` matchea snat en cualquier
+	// posicion, que es lo correcto para este caso.
+	re := regexp.MustCompile(`snat\s+to`)
 	for _, line := range d.lines {
 		if re.MatchString(line) || strings.Contains(line, "masquerade") {
 			d.patterns = append(d.patterns, PatternDetected{
@@ -144,8 +149,10 @@ func (d *patternDetector) detectChainPostrouting() {
 }
 
 // detectChainPrerouting detecta dNAT (clases 032, 050, 056).
+// FIX 2026-08-04 (Tarea 11): mismo bug que detectChainPostrouting. Quito
+// el `^\s*` para que matchee dnat en cualquier posicion de la linea.
 func (d *patternDetector) detectChainPrerouting() {
-	re := regexp.MustCompile(`(?m)^\s*dnat\s+to`)
+	re := regexp.MustCompile(`dnat\s+to`)
 	for _, line := range d.lines {
 		if re.MatchString(line) {
 			d.patterns = append(d.patterns, PatternDetected{
