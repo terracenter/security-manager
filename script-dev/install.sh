@@ -1,27 +1,29 @@
 #!/bin/bash
 # script-dev/install.sh — Instalador de SM-NG desde la rama `dev` (modo desarrollo).
 #
-# Como NO hay CI/CD en `dev` (politica de Freddy: solo `main`), este script baja
-# el ultimo Release pre-release con tag `v0.8.0-dev.*` desde la API publica de
-# GitHub. Esos tags los crea vos localmente con:
-#   git tag v0.8.0-dev.1
-#   git push origin v0.8.0-dev.1
-# Eso dispara el workflow release.yml (que SI esta en main, no en dev) y crea
-# el Release pre-release con el binario.
+# Diferencia con main:
+#   - main: tags v* (estables), firma GPG, install via deploy/install.sh.
+#   - dev:  tags v0.8.0-dev.N (pre-release, sin GPG), install via este script.
+#
+# Ambos tienen CI/CD. dev produce Releases pre-release cuando vos pusheas
+# el tag v0.8.0-dev.N a origin. workflow: .github/workflows/dev-release.yml.
 #
 # Uso:
 #   curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/dev/script-dev/install.sh | bash
 #
 # Que hace:
-#   1. Consulta la API publica de GitHub para encontrar el ultimo Release pre-release
+#   1. Banner grande: imprime "ESTO ES DEV — puede tener BUGs" en stderr/color.
+#      Esto es lo que distingue este script de deploy/install.sh (main), que NO
+#      imprime ese banner. Mismo flujo de install, diferente senal de riesgo.
+#   2. Consulta la API publica de GitHub para encontrar el ultimo Release pre-release
 #      con tag que matche v0.8.0-dev.*.
-#   2. Descarga el binario y el .sha256 desde el Release.
-#   3. Verifica el SHA256 (NO verifica GPG — los tags de dev no estan firmados).
-#   4. Pide sudo para instalar en /usr/local/sbin/security-manager-ng-dev.
-#   5. Imprime una advertencia grande de que es dev y PUEDE TENER BUGs.
+#   3. Descarga el binario y el .sha256 desde el Release.
+#   4. Verifica el SHA256 (NO verifica GPG — los tags de dev no estan firmados).
+#   5. Pide sudo para instalar en /usr/local/sbin/security-manager-ng-dev.
 #
-# Politica respetada: solo main tiene CI/CD. Los tags v0.8.0-dev.* son tags
-# locales que vos creas y pusheas; el workflow de main los detecta y compila.
+# Politica respetada: dev y main tienen CI/CD. Dev NO firma con GPG
+# (esa validacion es solo para tags v* de main). Dev SI genera el binario
+# compilado via GitHub Actions.
 
 set -e
 
@@ -29,20 +31,29 @@ REPO="terracenter/Security-Manager-Ng"
 BINARY="security-manager-ng"
 DEST="/usr/local/sbin/${BINARY}-dev"
 
-# ── Banner de advertencia ──────────────────────────────────────────────────
-cat <<'EOF'
+# ── Banner de advertencia (BIG — imprime esto primero, sin importar nada más) ──
+# Es la diferencia clave vs deploy/install.sh (main): quien corre este script
+# debe entender inmediatamente que esta en dev. NO continuar si no esta seguro.
+echo >&2
+cat >&2 <<'EOF'
 ================================================================
-   SM-NG instalador de DESARROLLO (rama: dev)
+   !!! ATENCION: INSTALADOR DE DESARROLLO (rama: dev) !!!
 ================================================================
 
-  ADVERTENCIA: Este binario es de la rama dev y PUEDE TENER BUGs.
-  No usar en produccion. Solo para pruebas y desarrollo.
+  Este binario es de la rama `dev` de Security-Manager-NG y puede
+  tener BUGS. NO es estable. NO recomendado para produccion.
+
+  Esta corriendo una PRE-RELEASE generada automaticamente al pushear
+  un tag v0.8.0-dev.N al repo. La firma GPG NO se valida (la firma
+  GPG es exclusiva de los tags v* de produccion en main).
 
   Si queres la version estable, usa:
-    curl ... deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+    curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+
+  Uso esperado: hosts de prueba, desarrollo, experimentacion.
 ================================================================
 EOF
-echo
+echo >&2
 
 # ── Verificar dependencias ─────────────────────────────────────────────────
 for dep in curl sha256sum sudo; do
@@ -156,10 +167,9 @@ sudo install -m 755 "${BIN_PATH}" "${DEST}"
 echo
 echo "[script-dev] Binario instalado como: ${BINARY}-dev"
 echo "[script-dev] Tag del release: ${LATEST_TAG}"
-echo
 echo "[script-dev] Uso:"
 echo "    sudo ${BINARY}-dev --version"
 echo "    sudo ${BINARY}-dev --help"
 echo "    sudo ${BINARY}-dev firewall estado"
 echo
-echo "[script-dev] LISTO. Binario de rama dev instalado. RECUERDA: PUEDE TENER BUGs."
+echo "[script-dev] LISTO. Binario de rama dev (pre-release) instalado arriba."

@@ -1,0 +1,66 @@
+name: Dev release (no GPG, pre-release by default)
+
+# Triggered por tags tipo v0.8.0-dev.N. Compila el binario, genera
+# checksum, y crea un GitHub Release pre-release con nombre que incluye
+# la rama de origen (o fija "dev" por convencion).
+#
+# Politica del repo: solo `dev` y `main` tienen CI/CD. Este workflow vive
+# en `dev` o `main` y solo produce releases pre-release con tag v0.8.0-dev.*
+# Los tags v* (sin -dev) los maneja release.yml existente.
+
+on:
+  push:
+    tags:
+      - "v0.8.0-dev.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: Build binario estatico
+        run: |
+          VERSION=$(git describe --tags --always --dirty)
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o security-manager-ng .
+
+      - name: Generar checksum
+        run: sha256sum security-manager-ng > security-manager-ng.sha256
+
+      - name: Publicar Release pre-release (DEV)
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          tag_name: ${{ github.ref_name }}
+          name: "${{ github.ref_name }} (DEV — pre-release con bugs posibles)"
+          body: |
+            ⚠️ **DEV build — modo desarrollo, puede tener BUGs.**
+
+            Este binario se compila automaticamente desde la rama `dev`
+            cuando vos pusheas un tag `v0.8.0-dev.N`. NO esta firmado con GPG
+            (esa validacion es solo para `main`). Tampoco es estable.
+
+            SI queres una version estable, instala desde un tag `v*` con:
+              curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+
+            Uso esperado: hosts de prueba, desarrollo, experimentacion.
+            NO recomendado para produccion.
+
+            Verificacion previa: `sha256sum -c security-manager-ng.sha256`
+            despues de descargar ambos archivos.
+          files: |
+            security-manager-ng
+            security-manager-ng.sha256
