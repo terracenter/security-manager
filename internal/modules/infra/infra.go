@@ -736,9 +736,9 @@ table inet sm {
         ip6 saddr @%s drop comment "sm-blacklist6"
 %s
         # 6 · Confiables (Tier A) + Intocables (Tier B) — bypass de GeoIP/puertos
-        #     Tier A: fail2ban SÍ puede banearlas (no van a ignoreip).
-        #     Tier B: fail2ban JAMÁS las banea (sincronizadas a ignoreip).
-        #     La distinción Tier A/B vive en fail2ban, no en este accept.
+        #     Tier A: crowdsec SÍ puede banearlas (no van al allowlist).
+        #     Tier B: crowdsec JAMÁS las banea (sincronizadas al allowlist).
+        #     La distinción Tier A/B vive en crowdsec, no en este accept.
         ip  saddr @%s accept comment "sm-whitelist4"
         ip6 saddr @%s accept comment "sm-whitelist6"
         ip  saddr @%s accept comment "sm-immune4"
@@ -766,10 +766,10 @@ table inet sm {
 }
 `,
 		RulesetFile, RulesetFile,
-		formatSet(SetWhitelist4, "ipv4_addr", `Confiables IPv4 (Tier A) — bypass GeoIP, fail2ban vigila`, wl4),
-		formatSet(SetWhitelist6, "ipv6_addr", `Confiables IPv6 (Tier A) — bypass GeoIP, fail2ban vigila`, wl6),
-		formatSet(SetImmune4, "ipv4_addr", `Intocables IPv4 (Tier B) — bypass GeoIP + fail2ban ignoreip`, im4),
-		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B) — bypass GeoIP + fail2ban ignoreip`, im6),
+		formatSet(SetWhitelist4, "ipv4_addr", `Confiables IPv4 (Tier A) — bypass GeoIP, crowdsec vigila`, wl4),
+		formatSet(SetWhitelist6, "ipv6_addr", `Confiables IPv6 (Tier A) — bypass GeoIP, crowdsec vigila`, wl6),
+		formatSet(SetImmune4, "ipv4_addr", `Intocables IPv4 (Tier B) — bypass GeoIP + crowdsec allowlist`, im4),
+		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B) — bypass GeoIP + crowdsec allowlist`, im6),
 		formatSet(SetBlacklist4, "ipv4_addr", `Bans manuales IPv4`, bl4),
 		formatSet(SetBlacklist6, "ipv6_addr", `Bans manuales IPv6`, bl6),
 		crowdsecSetsBlock(),

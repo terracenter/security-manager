@@ -221,7 +221,7 @@ func (d *patternDetector) detectTierAWhitelist() {
 			Name:        "tier-a-whitelist",
 			Confidence:  100,
 			Evidence:    d.setEvidence("sm_whitelist"),
-			Description: "Tier A (Confiables) configurado: IPs que pasan el firewall pero fail2ban SI puede banearlas. Tipico: LAN, IPs de proveedores con soporte.",
+			Description: "Tier A (Confiables) configurado: IPs que pasan el firewall pero crowdsec SI puede banearlas. Tipico: LAN, IPs de proveedores con soporte.",
 		})
 	}
 }
@@ -233,7 +233,7 @@ func (d *patternDetector) detectTierBImmune() {
 			Name:        "tier-b-immune",
 			Confidence:  100,
 			Evidence:    d.setEvidence("sm_immune"),
-			Description: "Tier B (Intocables) configurado: IPs que pasan el firewall Y fail2ban/crowdsec JAMAS las banea. Sincronizadas a ignoreip/allowlist. Tipico: admins, IPs de oficina.",
+			Description: "Tier B (Intocables) configurado: IPs que pasan el firewall Y crowdsec JAMAS las banea. Sincronizadas al allowlist. Tipico: admins, IPs de oficina.",
 		})
 	}
 }

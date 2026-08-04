@@ -26,7 +26,8 @@ func New() *Whitelist {
 func (w *Whitelist) Order() int   { return 2 }
 func (w *Whitelist) Name() string { return "Whitelist / SSoT (Confiables / Intocables)" }
 
-// Reset borra la whitelist/immune (Tier A/B) y el jail.d de fail2ban derivado de ella.
+// Reset borra la whitelist/immune (Tier A/B). El jail.d de fail2ban ya
+// no existe (Tarea 12: fail2ban fue removido en favor de crowdsec).
 func (w *Whitelist) Reset() {
 	for _, path := range []string{infra.Whitelist4File, infra.Whitelist6File, infra.Immune4File, infra.Immune6File} {
 		if err := os.Remove(path); err == nil {
@@ -37,18 +38,9 @@ func (w *Whitelist) Reset() {
 			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
 		}
 	}
-	if err := os.Remove(fail2banIgnoreipFile); err == nil {
-		fmt.Printf("  Eliminado: %s\n", fail2banIgnoreipFile)
-		if out, err := exec.Command("fail2ban-client", "reload").CombinedOutput(); err != nil {
-			fmt.Printf("  ADVERTENCIA: fail2ban-client reload falló: %s\n", strings.TrimSpace(string(out)))
-		} else {
-			fmt.Println("  fail2ban recargado.")
-		}
-	} else if os.IsNotExist(err) {
-		fmt.Printf("  No había %s.\n", fail2banIgnoreipFile)
-	} else {
-		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", fail2banIgnoreipFile, err)
-	}
+	// Tarea 12: ya no escribimos a /etc/fail2ban/jail.d/ ni recargamos fail2ban-client.
+	// Si crowdsec NO esta instalado, el operador no tiene baneador automatico.
+	// Documentado en ROADMAP (Decision 3: fail2ban → crowdsec, pendiente E2E).
 }
 
 // tier parametriza cada nivel de confianza para reusar add/list/delete.
@@ -58,12 +50,12 @@ type tier struct {
 	set6   string
 	file4  string
 	file6  string
-	immune bool // Tier B → se sincroniza a fail2ban ignoreip
+	immune bool // Tier B → se sincroniza al allowlist de crowdsec
 }
 
 func tierA() tier {
 	return tier{
-		label:  "Confiables (Tier A — vigiladas por fail2ban)",
+		label:  "Confiables (Tier A — vigiladas por crowdsec)",
 		set4:   infra.SetWhitelist4, set6: infra.SetWhitelist6,
 		file4: infra.Whitelist4File, file6: infra.Whitelist6File,
 		immune: false,
@@ -72,7 +64,7 @@ func tierA() tier {
 
 func tierB() tier {
 	return tier{
-		label:  "Intocables (Tier B — fail2ban ignoreip)",
+		label:  "Intocables (Tier B — crowdsec never-bans)",
 		set4:   infra.SetImmune4, set6: infra.SetImmune6,
 		file4: infra.Immune4File, file6: infra.Immune6File,
 		immune: true,
@@ -82,9 +74,9 @@ func tierB() tier {
 func (w *Whitelist) Menu() {
 	for {
 		fmt.Println("\n  ┌─ Whitelist / SSoT ─────────────────────────────┐")
-		fmt.Println("  │  [1] Confiables (Tier A) — fail2ban SÍ vigila   │")
-		fmt.Println("  │  [2] Intocables (Tier B) — fail2ban JAMÁS banea │")
-		fmt.Println("  │  [3] Sincronizar fail2ban (Tier B → ignoreip)   │")
+		fmt.Println("  │  [1] Confiables (Tier A) — crowdsec SÍ vigila   │")
+		fmt.Println("  │  [2] Intocables (Tier B) — crowdsec JAMÁS banea │")
+		fmt.Println("  │  [3] Sincronizar crowdsec (Tier B → allowlist)   │")
 		fmt.Println("  │  [0] Volver                                     │")
 		fmt.Println("  └─────────────────────────────────────────────────┘")
 		fmt.Print("  Selección: ")
@@ -189,7 +181,7 @@ func (w *Whitelist) addSelf(t tier) {
 }
 
 // persist valida la entrada, captura metadatos, la agrega al set nft y al archivo,
-// y sincroniza fail2ban si el tier es intocable.
+// y sincroniza crowdsec si el tier es intocable.
 func (w *Whitelist) persist(t tier, addr string) {
 	setName, confFile, err := t.resolve(addr)
 	if err != nil {
@@ -368,38 +360,18 @@ func removeByAddr(path, addr string) error {
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
 
-const fail2banIgnoreipFile = "/etc/fail2ban/jail.d/sm-ng-whitelist.conf"
+const crowdsecAllowlistFile = "/etc/crowdsec/allowlists/sm-ng.yaml"
 
-// syncFail2banIgnoreipLegacy escribe SOLO las IPs intocables (Tier B) en fail2ban ignoreip
-// y recarga. El Tier A (confiables/vigiladas) NO va a ignoreip — fail2ban puede banearlas.
-// Fallo no es fatal. Esta función es el fallback cuando CrowdSec no está instalado.
-func syncFail2banIgnoreipLegacy() {
-	im4 := infra.ACLAddresses(mustEntries(infra.Immune4File))
-	im6 := infra.ACLAddresses(mustEntries(infra.Immune6File))
-	all := append(im4, im6...)
+// syncFail2banIgnoreipLegacy ELIMINADO en Tarea 12.
+// Antes escribia IPs intocables a /etc/fail2ban/jail.d/sm-ng-whitelist.conf
+// y recargaba fail2ban-client. Reemplazado por crowdsec.SyncAllowlist en
+// SyncImmuneTier() (commit 2953ca3 + 9b2b141). Ver Decision 3 del
+// checkpoint 2026-07-27 y ROADMAP.md.
 
-	if len(all) == 0 {
-		os.Remove(fail2banIgnoreipFile)
-		exec.Command("fail2ban-client", "reload").Run()
-		fmt.Println("  ✓  fail2ban ignoreip vaciado (sin intocables Tier B).")
-		return
-	}
-
-	content := fmt.Sprintf(
-		"# Generado por Security-Manager-NG — Intocables (Tier B). NO editar manualmente.\n"+
-			"[DEFAULT]\nignoreip = %s\n", strings.Join(all, " "))
-	if err := os.WriteFile(fail2banIgnoreipFile, []byte(content), 0o640); err != nil {
-		fmt.Printf("  ⚠  fail2ban ignoreip: no se pudo escribir %s: %v\n", fail2banIgnoreipFile, err)
-		return
-	}
-	exec.Command("fail2ban-client", "reload").Run()
-	fmt.Printf("  ✓  fail2ban ignoreip sincronizado (%d intocables Tier B).\n", len(all))
-}
-
-// SyncImmuneTier sincroniza el tier IMMUNE (intocables) a CrowdSec o fail2ban según disponibilidad.
-// - Si CrowdSec está instalado: sincroniza vía CrowdSec allowlist
-// - Si fail2ban está instalado (sin CrowdSec): sincroniza vía fail2ban ignoreip
-// - Si ninguno está disponible: retorna error no-bloqueante (log warning)
+// SyncImmuneTier sincroniza el tier IMMUNE (intocables) a CrowdSec.
+// Tarea 12: el fallback a fail2ban fue eliminado. Si CrowdSec NO esta
+// instalado, el operador no tiene baneador automatico y la operacion es
+// no-bloqueante (solo warning).
 func SyncImmuneTier() error {
 	immuneFiles := []string{infra.Immune4File, infra.Immune6File}
 
@@ -419,22 +391,10 @@ func SyncImmuneTier() error {
 		return nil
 	}
 
-	// Fallback a fail2ban si CrowdSec no está disponible
-	if isFail2banInstalled() {
-		syncFail2banIgnoreipLegacy()
-		return nil
-	}
-
-	// Si ninguno está disponible, retornar error no-bloqueante
-	fmt.Println("  ⚠  Advertencia: ni CrowdSec ni fail2ban están instalados. IMMUNE tier no sincronizado.")
+	// Si CrowdSec no esta instalado, log de advertencia. No bloqueante.
+	fmt.Println("  ⚠  CrowdSec no esta instalado. IMMUNE tier no sincronizado a CrowdSec.")
+	fmt.Println("     Tarea 12: el fallback a fail2ban fue removido. Instale CrowdSec para sincronizar IPs intocables.")
 	return nil
-}
-
-// isFail2banInstalled verifica si fail2ban está disponible en el sistema.
-func isFail2banInstalled() bool {
-	cmd := exec.Command("which", "fail2ban-client")
-	err := cmd.Run()
-	return err == nil
 }
 
 func mustEntries(path string) []infra.ACLEntry {
