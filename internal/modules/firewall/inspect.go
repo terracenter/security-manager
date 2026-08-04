@@ -129,7 +129,12 @@ func (d *patternDetector) detectChainPostrouting() {
 	// La cadena postrouting existe por default en GenerateRuleset (linea
 	// "chain postrouting { type nat hook postrouting priority srcnat; }").
 	// Lo que indica NAT activo son las REGLAS dentro (snat to, masquerade).
-	re := regexp.MustCompile(`(?m)^\s*snat\s+to`)
+	// FIX 2026-08-04 (Tarea 11): el regex original era `^\s*snat\s+to` con `(?m)`,
+	// pero eso requeria "snat" al inicio de la linea, no inline. Como nft
+	// puede poner `oifname "eth0" snat to 1.2.3.4` (snat no inicia la linea),
+	// el detector nunca matcheaba. Sin `^\s*` matchea snat en cualquier
+	// posicion, que es lo correcto para este caso.
+	re := regexp.MustCompile(`snat\s+to`)
 	for _, line := range d.lines {
 		if re.MatchString(line) || strings.Contains(line, "masquerade") {
 			d.patterns = append(d.patterns, PatternDetected{
@@ -144,8 +149,10 @@ func (d *patternDetector) detectChainPostrouting() {
 }
 
 // detectChainPrerouting detecta dNAT (clases 032, 050, 056).
+// FIX 2026-08-04 (Tarea 11): mismo bug que detectChainPostrouting. Quito
+// el `^\s*` para que matchee dnat en cualquier posicion de la linea.
 func (d *patternDetector) detectChainPrerouting() {
-	re := regexp.MustCompile(`(?m)^\s*dnat\s+to`)
+	re := regexp.MustCompile(`dnat\s+to`)
 	for _, line := range d.lines {
 		if re.MatchString(line) {
 			d.patterns = append(d.patterns, PatternDetected{
@@ -259,8 +266,16 @@ func (d *patternDetector) detectCrowdsecDrops() {
 }
 
 // detectAntirecon detecta las reglas anti-recon con flags malformados (stage 4).
+// FIX 2026-08-04 (Tarea 14): el detector original buscaba "tcp flags" Y
+// "limit rate 5/minute" en la MISMA linea. nft en output normal imprime
+// estas reglas en 2 lineas continuadas con "\\". Ahora pre-procesamos el
+// output: colapsamos las continuaciones `\\<newline>` en una sola linea
+// antes de buscar. Asi funciona tanto para output single-line (nft -s)
+// como para output normal con \\ de continuacion.
 func (d *patternDetector) detectAntirecon() {
-	for _, line := range d.lines {
+	// Colapsar continuaciones de linea (nft pone \ al final si la regla es larga).
+	collapsed := collapseLineContinuations(d.raw)
+	for _, line := range strings.Split(collapsed, "\n") {
 		if strings.Contains(line, "tcp flags") && strings.Contains(line, "limit rate 5/minute") {
 			d.patterns = append(d.patterns, PatternDetected{
 				Name:        "antirecon",
@@ -271,6 +286,31 @@ func (d *patternDetector) detectAntirecon() {
 			return
 		}
 	}
+}
+
+// collapseLineContinuaciones une lineas que terminan en "\\" con la siguiente.
+// En bash y en nft list output, "\\<newline>" significa "continuacion".
+// Ej: "tcp flags \\\n    limit rate ..." se vuelve "tcp flags limit rate ...".
+func collapseLineContinuations(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		// Detectar "\\" seguido de newline (dos caracteres: backslash y \n).
+		if i+1 < len(s) && s[i] == '\\' && s[i+1] == '\n' {
+			// Saltar el "\\" y el newline, continuar con la siguiente linea.
+			i += 2
+			// Saltar espacios/tabs al inicio de la linea de continuacion.
+			for i < len(s) && (s[i] == ' ' || s[i] == '	') {
+				i++
+			}
+			b.WriteByte(' ')  // reemplazar "\\<newline>" por un espacio.
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 // detectDefaultDropLog detecta log prefix "SM-DROP-DEFAULT" en stage 9.

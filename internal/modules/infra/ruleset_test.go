@@ -158,19 +158,19 @@ func TestGenerateRulesetBaseRulesHaveComment(t *testing.T) {
 
 	// Stages 1-9 del template principal. Cada regla tiene un slug "sm-*".
 	mustHaveComment := []string{
-		`comment "sm-fastpath"`,
-		`comment "sm-invalid-drop"`,
-		`comment "sm-antirecon-xmas"`,
+		`comment "sm-fastpath"`,                   // Stage 1: conntrack
+		`comment "sm-invalid-drop"`,               // Stage 3: conntrack invalid
+		`comment "sm-antirecon-xmas"`,             // Stage 4: antirecon
 		`comment "sm-antirecon-null"`,
 		`comment "sm-antirecon-finsyn"`,
 		`comment "sm-antirecon-synrst"`,
-		`comment "sm-blacklist4"`,
-		`comment "sm-whitelist4"`,
+		`comment "sm-blacklist4"`,                 // Stage 5: blacklist
+		`comment "sm-whitelist4"`,                 // Stage 6: whitelist/immune
 		`comment "sm-whitelist6"`,
 		`comment "sm-immune4"`,
 		`comment "sm-immune6"`,
-		`comment "sm-https-global"`,
-		`comment "sm-default-drop"`,
+		`comment "sm-https-global"`,               // Stage 8: HTTPS
+		`comment "sm-default-drop"`,               // Stage 9: default DROP
 	}
 	for _, want := range mustHaveComment {
 		if !strings.Contains(rs, want) {
