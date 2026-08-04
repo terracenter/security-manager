@@ -783,7 +783,7 @@ table inet sm {
 		geoipRulesBlock(geoip),
 		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
-	)
+	) + smNatTableTemplate
 }
 
 func formatSet(name, addrType, _ string, elements []string) string {

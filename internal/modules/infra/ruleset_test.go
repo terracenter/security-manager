@@ -145,3 +145,82 @@ func TestGenerateRulesetNftComments(t *testing.T) {
 		}
 	}
 }
+
+// FIX P14 (Tarea 14): verifica que el ruleset base (9 stages del template
+// principal) tiene `comment "sm-..."` en CADA regla, no solo en las
+// excepciones globales. Esto es lo que documenta cada regla en `nft list`
+// para auditoria y para el modulo inspect().
+func TestGenerateRulesetBaseRulesHaveComment(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	// Stages 1-9 del template principal. Cada regla tiene un slug "sm-*".
+	mustHaveComment := []string{
+		`comment "sm-fastpath"`,
+		`comment "sm-invalid-drop"`,
+		`comment "sm-antirecon-xmas"`,
+		`comment "sm-antirecon-null"`,
+		`comment "sm-antirecon-finsyn"`,
+		`comment "sm-antirecon-synrst"`,
+		`comment "sm-blacklist4"`,
+		`comment "sm-whitelist4"`,
+		`comment "sm-whitelist6"`,
+		`comment "sm-immune4"`,
+		`comment "sm-immune6"`,
+		`comment "sm-https-global"`,
+		`comment "sm-default-drop"`,
+	}
+	for _, want := range mustHaveComment {
+		if !strings.Contains(rs, want) {
+			t.Errorf("ruleset base NO contiene comment %q (Tarea 14)", want)
+		}
+	}
+}
+
+// FIX P13 (Tarea 13): verifica que GenerateRuleset ahora incluye la
+// tabla sm_nat al final del ruleset, y que NO incluye chain forward
+// todavia (ese queda para sesion dedicada).
+func TestGenerateRulesetIncludesSmNatTable(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	mustContain := []string{
+		"table inet sm_nat {",
+		"chain prerouting {",
+		"type nat hook prerouting priority dstnat",
+		"chain postrouting {",
+		"type nat hook postrouting priority srcnat",
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(rs, want) {
+			t.Errorf("ruleset NO contiene %q (Tarea 13: tabla sm_nat)", want)
+		}
+	}
+
+	posSM := strings.Index(rs, "table inet sm {")
+	posSMNat := strings.Index(rs, "table inet sm_nat {")
+	if posSM < 0 || posSMNat < 0 {
+		t.Fatal("no se encontro tabla inet sm o inet sm_nat")
+	}
+	if !(posSM < posSMNat) {
+		t.Errorf("tabla inet sm debe ir ANTES de sm_nat: sm=%d sm_nat=%d", posSM, posSMNat)
+	}
+}
+
+// FIX P13 (Tarea 13): verifica que chain `forward` AUN NO se genera.
+// El refactor completo a text/template con chain forward se posterga
+// para una sesion dedicada (porque requiere coordinacion con tests).
+func TestGenerateRuleset_DoesNotIncludeForwardYet(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	if strings.Contains(rs, "chain forward {") {
+		t.Error("chain forward YA se genera, pero deberia postergarse para sesion dedicada (Tarea 13 partes 2-3)")
+	}
+}
