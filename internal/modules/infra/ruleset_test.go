@@ -129,11 +129,19 @@ func TestReadACLEntries(t *testing.T) {
 // FIX P3: verifica que GenerateRuleset emite la keyword `comment` de nft
 // en las reglas de excepciones globales (LetsEncrypt, WireGuard, OpenVPN,
 // Tailscale).
+//
+// FIX determinismo CI: este test usa GenerateRulesetWith con un GlobalServices
+// explícito (TailscaleActive=true) para NO depender de si la interfaz
+// tailscale0 existe en el host donde corren los tests. Antes el test llamaba
+// GenerateRuleset() que internamente hacía os.Stat("/sys/class/net/tailscale0"),
+// entonces pasaba en máquinas con Tailscale y fallaba en CI runners limpios.
+// Ver TestGenerateRulesetNftComments_NoTailscale para el camino opuesto.
 func TestGenerateRulesetNftComments(t *testing.T) {
 	geoip := GeoIPData{Countries: []CountrySet{
 		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
 	}}
-	rs := GenerateRuleset(22, true, geoip, true)
+	svc := GlobalServices{TailscaleActive: true}
+	rs := GenerateRulesetWith(svc, 22, true, geoip, true)
 
 	mustContainComment := []string{
 		`comment "LetsEncrypt-HTTP01"`,
@@ -222,5 +230,25 @@ func TestGenerateRuleset_DoesNotIncludeForwardYet(t *testing.T) {
 
 	if strings.Contains(rs, "chain forward {") {
 		t.Error("chain forward YA se genera, pero deberia postergarse para sesion dedicada (Tarea 13 partes 2-3)")
+	}
+}
+
+// FIX determinismo CI: gemelo de TestGenerateRulesetNftComments pero con
+// TailscaleActive=false. Verifica que cuando Tailscale NO está activo el
+// ruleset NO contiene el comment keyword "Tailscale-mgmt". Usa la variante
+// testeable GenerateRulesetWith para no depender del host.
+func TestGenerateRulesetNftComments_NoTailscale(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	svc := GlobalServices{TailscaleActive: false}
+	rs := GenerateRulesetWith(svc, 22, true, geoip, true)
+
+	if strings.Contains(rs, `comment "Tailscale-mgmt"`) {
+		t.Error(`ruleset contiene "comment \"Tailscale-mgmt\"" pero TailscaleActive=false (no deberia incluirlo)`)
+	}
+	// LetsEncrypt SI debe estar presente (no depende de Tailscale)
+	if !strings.Contains(rs, `comment "LetsEncrypt-HTTP01"`) {
+		t.Error(`ruleset no contiene "comment \"LetsEncrypt-HTTP01\"" (LetsEncrypt SI debe estar aunque Tailscale no)`)
 	}
 }

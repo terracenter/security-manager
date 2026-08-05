@@ -650,8 +650,16 @@ func crowdsecDropRules() string {
 
 // GenerateRuleset produce el contenido completo de sm.nft.
 // Lee whitelist/blacklist/allowed_ports desde los archivos de config para preservar entradas entre recargas.
+// Es un wrapper sobre GenerateRulesetWith que detecta los servicios globales del host.
+// Para tests deterministas, usar GenerateRulesetWith con un GlobalServices forzado.
 func GenerateRuleset(sshPort int, sshEnabled bool, geoip GeoIPData, port80 bool) string {
-	svc := DetectGlobalServices()
+	return GenerateRulesetWith(DetectGlobalServices(), sshPort, sshEnabled, geoip, port80)
+}
+
+// GenerateRulesetWith es la variante testeable de GenerateRuleset.
+// Acepta un GlobalServices explícito para que los tests no dependan del estado del host
+// (interfaces de red, archivos en /etc/wireguard, etc.).
+func GenerateRulesetWith(svc GlobalServices, sshPort int, sshEnabled bool, geoip GeoIPData, port80 bool) string {
 	allPorts, _ := ReadPortEntries(AllowedPortsFile)
 
 	// Separar puertos por tier
