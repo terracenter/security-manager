@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "dev-*"
+  pull_request:
+    branches:
+      - main
+      - dev
+      - "dev-*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: go test -race + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+          cache: true
+
+      - name: Verificar que el código compila
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Tests con race detector y coverage
+        run: |
+          mkdir -p coverage
+          go test -race -coverprofile=coverage/coverage.out -covermode=atomic ./...
+
+      - name: Resumen de coverage en consola
+        run: |
+          go tool cover -func=coverage/coverage.out | tail -1
+
+      - name: Subir artifact de coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/coverage.out
