@@ -341,7 +341,14 @@ func parseWireGuardPort(path string) int {
 	if err != nil {
 		return 0
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	return parseWireGuardPortContent(string(data))
+}
+
+// parseWireGuardPortContent es la variante testeable de parseWireGuardPort.
+// Recibe el contenido del archivo en vez del path, para que los tests (incluido
+// fuzz) no dependan del filesystem.
+func parseWireGuardPortContent(content string) int {
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(strings.ToLower(line), "listenport") {
 			parts := strings.SplitN(line, "=", 2)
@@ -373,7 +380,13 @@ func parseOpenVPNServer(path string) (OVPNRule, bool) {
 	if err != nil {
 		return OVPNRule{}, false
 	}
-	content := string(data)
+	return parseOpenVPNServerContent(string(data))
+}
+
+// parseOpenVPNServerContent es la variante testeable de parseOpenVPNServer.
+// Recibe el contenido del archivo en vez del path, para que los tests (incluido
+// fuzz) no dependan del filesystem.
+func parseOpenVPNServerContent(content string) (OVPNRule, bool) {
 	// Descartar configs cliente
 	if matchLine(content, "^client") || matchLine(content, "^remote ") {
 		return OVPNRule{}, false
