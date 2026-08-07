@@ -70,7 +70,7 @@ if [[ ${EUID} -eq 0 ]]; then
 fi
 
 # ── Encontrar el ultimo Release pre-release con tag v0.8.0-dev.* ──────────
-echo "\[script-dev\] Buscando ultimo Release pre-release con tag v0.8.0-dev.*..."
+echo '[script-dev] Buscando ultimo Release pre-release con tag v0.8.0-dev.*...'
 RELEASES=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=30")
 
 # Filtrar tags que matchean v0.8.0-dev.* y son prerelease=true
@@ -87,7 +87,7 @@ if [[ -z "${LATEST_TAG}" ]]; then
     echo "       Eso dispara el workflow de CI en main y crea el Release." >&2
     exit 1
 fi
-echo "\[script-dev\] Tag encontrado: ${LATEST_TAG}"
+echo '[script-dev] Tag encontrado:' "${LATEST_TAG}"
 
 # ── Encontrar los asset_urls del release ────────────────────────────────────
 RELEASE_INFO=$(echo "${RELEASES}" | tr '\n' '\0' \
@@ -138,14 +138,14 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 BIN_PATH="${TMP_DIR}/${BINARY}"
 SHA_PATH="${TMP_DIR}/${BINARY}.sha256"
 
-echo "\[script-dev\] Descargando binario desde el release ${LATEST_TAG}..."
+echo '[script-dev] Descargando binario desde el release' "${LATEST_TAG}" '...'
 if ! curl -fsSL -o "${BIN_PATH}" "${BIN_URL}"; then
     echo "ERROR: no se pudo descargar ${BINARY} desde ${BIN_URL}" >&2
     exit 1
 fi
 
 if [[ -n "${SHA_URL}" ]]; then
-    echo "\[script-dev\] Descargando SHA256..."
+    echo '[script-dev] Descargando SHA256...'
     if ! curl -fsSL -o "${SHA_PATH}" "${SHA_URL}"; then
         echo "WARN: no se pudo descargar el SHA256, saltando verificacion." >&2
     fi
@@ -153,23 +153,23 @@ fi
 
 # ── Verificar SHA256 ────────────────────────────────────────────────────────
 if [[ -f "${SHA_PATH}" ]]; then
-    echo "\[script-dev\] Verificando SHA256..."
+    echo '[script-dev] Verificando SHA256...'
     if ! ( cd "${TMP_DIR}" && sha256sum -c "${BINARY}.sha256" ); then
         echo "ERROR: el checksum no coincide. Abortando." >&2
         exit 1
     fi
-    echo "\[script-dev\] SHA256 verificado."
+    echo '[script-dev] SHA256 verificado.'
 fi
 
 # ── Instalar con sudo ──────────────────────────────────────────────────────
-echo "\[script-dev\] Instalando en ${DEST}..."
+echo '[script-dev] Instalando en' "${DEST}" '...'
 sudo install -m 755 "${BIN_PATH}" "${DEST}"
 echo
-echo "\[script-dev\] Binario instalado como: ${BINARY}-dev"
-echo "\[script-dev\] Tag del release: ${LATEST_TAG}"
-echo "\[script-dev\] Uso:"
+echo '[script-dev] Binario instalado como:' "${BINARY}-dev"
+echo '[script-dev] Tag del release:' "${LATEST_TAG}"
+echo '[script-dev] Uso:'
 echo "    sudo ${BINARY}-dev --version"
 echo "    sudo ${BINARY}-dev --help"
 echo "    sudo ${BINARY}-dev firewall estado"
 echo
-echo "\[script-dev\] LISTO. Binario de rama dev (pre-release) instalado arriba."
+echo '[script-dev] LISTO. Binario de rama dev (pre-release) instalado arriba.'
