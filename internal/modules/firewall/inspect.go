@@ -26,7 +26,7 @@ type PatternDetected struct {
 type InspectResult struct {
 	TableActive    bool             // true si la tabla `inet sm` existe
 	Chains         map[string]chainInfo
-	Sets           map[string]int
+	Sets           map[string][]string
 	Patterns       []PatternDetected
 	Recommendation string           // texto humano: que el operador deberia hacer
 }
@@ -391,7 +391,7 @@ func (d *patternDetector) setEvidence(setPrefix string) []string {
 }
 
 // buildRecommendation genera una recomendacion humana segun los patrones detectados.
-func buildRecommendation(patterns []PatternDetected, chains map[string]chainInfo, sets map[string]int) string {
+func buildRecommendation(patterns []PatternDetected, chains map[string]chainInfo, sets map[string][]string) string {
 	if len(patterns) == 0 {
 		return "No se detectaron patrones especificos. El ruleset parece ser un baseline generico. Considerar agregar whitelist/immune/blacklist segun el caso de uso."
 	}
@@ -465,11 +465,11 @@ func (f *Firewall) inspectCLI() {
 
 	if len(result.Sets) > 0 {
 		fmt.Println("  Sets:")
-		for name, count := range result.Sets {
-			if count == 0 {
+		for name, elements := range result.Sets {
+			if len(elements) == 0 {
 				fmt.Printf("    %-20s (vacío)\n", name)
 			} else {
-				fmt.Printf("    %-20s %d entradas\n", name, count)
+				fmt.Printf("    %-20s %d entradas\n", name, len(elements))
 			}
 		}
 		fmt.Println()

@@ -2,10 +2,12 @@ package firewall
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -252,6 +254,11 @@ func (f *Firewall) applyBase() {
 		f.logger.Info(fmt.Sprintf("[firewall] Backup: %s → %s", infra.RulesetFile, infra.BackupFile))
 	}
 
+	// Escribir manifest con timestamp + sha256 del ruleset (para detectar drift manual).
+	rulesetHash := sha256.Sum256([]byte(ruleset))
+	manifest := fmt.Sprintf("timestamp=%s\nsha256=%x\n", time.Now().UTC().Format(time.RFC3339), rulesetHash)
+	_ = os.WriteFile(infra.RulesetFile+".manifest", []byte(manifest), 0o640)
+
 	if err := os.Rename(tmpFile, infra.RulesetFile); err != nil {
 		f.logger.Error("No se pudo preparar el ruleset para aplicación.", fmt.Sprintf("%v", err))
 		return
@@ -302,7 +309,7 @@ func (f *Firewall) showStatus() {
 		return
 	}
 
-	// Parser mínimo del output de nft
+	// Parseo completo: cadenas con sus reglas + sets con sus elementos
 	chains, sets := parseNftStatus(string(out))
 
 	fmt.Println("  ✓ Firewall: ACTIVO")
@@ -318,37 +325,210 @@ func (f *Firewall) showStatus() {
 
 	if len(sets) > 0 {
 		fmt.Println("  Sets:")
-		for name, count := range sets {
-			if count == 0 {
+		for name, elements := range sets {
+			if len(elements) == 0 {
 				fmt.Printf("    %-20s (vacío)\n", name)
 			} else {
-				fmt.Printf("    %-20s %d entradas\n", name, count)
+				fmt.Printf("    %-20s %d entradas\n", name, len(elements))
 			}
 		}
 		fmt.Println()
 	}
 
+	// Metadata: timestamp + sha256 de la última apply (si existe manifest).
+	f.printManifestMetadata()
+
 	fmt.Println("  Detalles técnicos → /var/log/security-manager-ng.log")
 	if f.logger != nil {
 		f.logger.Technical(string(out))
 	}
+
+	// Sub-menú de drill-down (Fase 1 del checklist: drill-down de firewall)
+	f.statusDrilldown(chains, sets)
 }
 
-// parseNftStatus extrae información mínima del output de "nft list table inet sm".
-// Retorna: map[nombre]chainInfo (cadenas), map[nombre]count (sets).
+// printManifestMetadata lee /etc/security-manager/sm.nft.manifest y muestra
+// timestamp + hash de la última apply. Si el hash del sm.nft actual difiere
+// del manifest, avisa drift manual.
+func (f *Firewall) printManifestMetadata() {
+	manifestPath := infra.RulesetFile + ".manifest"
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		fmt.Println("  Última apply: (sin manifest — creada antes de esta versión)")
+		return
+	}
+	var ts, hash string
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case strings.HasPrefix(line, "timestamp="):
+			ts = strings.TrimPrefix(line, "timestamp=")
+		case strings.HasPrefix(line, "sha256="):
+			hash = strings.TrimPrefix(line, "sha256=")
+		}
+	}
+	if ts == "" || hash == "" {
+		fmt.Println("  Última apply: manifest corrupto o formato desconocido")
+		return
+	}
+	fmt.Printf("  Última apply: %s\n", ts)
+	fmt.Printf("  Hash ruleset: %s\n", hash)
+
+	// Drift detection: comparar hash del archivo actual vs manifest.
+	if cur, err := os.ReadFile(infra.RulesetFile); err == nil {
+		curHash := sha256.Sum256(cur)
+		curHex := fmt.Sprintf("%x", curHash)
+		if curHex != hash {
+			fmt.Println("  ⚠ DRIFT detectado: el archivo sm.nft en disco fue modificado manualmente")
+			fmt.Println("     después de la última apply. Próxima apply lo sobrescribirá.")
+		}
+	}
+}
+
+// statusDrilldown ofrece ver el contenido detallado de una cadena o un set.
+// Loop interactivo hasta que el usuario elige [0] volver.
+func (f *Firewall) statusDrilldown(chains map[string]chainInfo, sets map[string][]string) {
+	// Salir si no hay nada que drillar
+	if len(chains) == 0 && len(sets) == 0 {
+		return
+	}
+	for {
+		fmt.Println("  ┌─ Drill-down ─────────────────────────────────────┐")
+		if len(chains) > 0 {
+			fmt.Println("  │  [C] Ver reglas de una cadena                   │")
+		}
+		if len(sets) > 0 {
+			fmt.Println("  │  [S] Ver elementos de un set                    │")
+		}
+		fmt.Println("  │  [0] Volver al menú de Firewall                 │")
+		fmt.Println("  └───────────────────────────────────────────────────┘")
+		fmt.Print("  Selección: ")
+
+		if !f.scanner.Scan() {
+			return
+		}
+		switch strings.ToUpper(strings.TrimSpace(f.scanner.Text())) {
+		case "C":
+			if len(chains) == 0 {
+				fmt.Println("  No hay cadenas para inspeccionar.")
+				continue
+			}
+			f.showChainRules(chains)
+		case "S":
+			if len(sets) == 0 {
+				fmt.Println("  No hay sets para inspeccionar.")
+				continue
+			}
+			f.showSetElements(sets)
+		case "0":
+			return
+		default:
+			fmt.Println("  Opción inválida.")
+		}
+	}
+}
+
+// showChainRules lista las cadenas y deja elegir una para ver todas sus reglas.
+func (f *Firewall) showChainRules(chains map[string]chainInfo) {
+	fmt.Println()
+	fmt.Println("  Cadenas disponibles:")
+	names := make([]string, 0, len(chains))
+	for name := range chains {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for i, name := range names {
+		info := chains[name]
+		fmt.Printf("    [%d] %-12s policy:%-8s — %d reglas\n", i+1, name, info.policy, info.ruleCount)
+	}
+	fmt.Printf("    [0] Cancelar\n")
+	fmt.Print("  Cadena a inspeccionar: ")
+
+	if !f.scanner.Scan() {
+		return
+	}
+	var sel int
+	if _, err := fmt.Sscanf(strings.TrimSpace(f.scanner.Text()), "%d", &sel); err != nil {
+		fmt.Println("  Opción inválida.")
+		return
+	}
+	if sel == 0 {
+		return
+	}
+	if sel < 1 || sel > len(names) {
+		fmt.Println("  Opción fuera de rango.")
+		return
+	}
+	chosen := names[sel-1]
+	info := chains[chosen]
+	fmt.Printf("\n  ── Cadena: %s (policy: %s) ──\n", chosen, info.policy)
+	if len(info.rules) == 0 {
+		fmt.Println("    (sin reglas)")
+		return
+	}
+	for i, rule := range info.rules {
+		fmt.Printf("    %3d. %s\n", i+1, rule)
+	}
+}
+
+// showSetElements lista los sets y deja elegir uno para ver sus elementos.
+func (f *Firewall) showSetElements(sets map[string][]string) {
+	fmt.Println()
+	fmt.Println("  Sets disponibles:")
+	names := make([]string, 0, len(sets))
+	for name := range sets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for i, name := range names {
+		fmt.Printf("    [%d] %-20s %d entradas\n", i+1, name, len(sets[name]))
+	}
+	fmt.Printf("    [0] Cancelar\n")
+	fmt.Print("  Set a inspeccionar: ")
+
+	if !f.scanner.Scan() {
+		return
+	}
+	var sel int
+	if _, err := fmt.Sscanf(strings.TrimSpace(f.scanner.Text()), "%d", &sel); err != nil {
+		fmt.Println("  Opción inválida.")
+		return
+	}
+	if sel == 0 {
+		return
+	}
+	if sel < 1 || sel > len(names) {
+		fmt.Println("  Opción fuera de rango.")
+		return
+	}
+	chosen := names[sel-1]
+	elements := sets[chosen]
+	fmt.Printf("\n  ── Set: %s (%d entradas) ──\n", chosen, len(elements))
+	if len(elements) == 0 {
+		fmt.Println("    (vacío)")
+		return
+	}
+	for i, elem := range elements {
+		fmt.Printf("    %4d. %s\n", i+1, elem)
+	}
+}
+
+// parseNftStatus extrae estructura completa del output de "nft list table inet sm".
+// Retorna: map[nombre]chainInfo con reglas, map[nombre]elementos (sets).
 type chainInfo struct {
 	policy    string
 	ruleCount int
+	rules     []string // texto crudo de cada regla, en orden
 }
 
-func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
+func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string][]string) {
 	chains := make(map[string]chainInfo)
-	sets := make(map[string]int)
+	sets := make(map[string][]string)
 
 	lines := strings.Split(nftOutput, "\n")
 	var inChain bool
 	var chainName string
 	var ruleCount int
+	var rules []string
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -358,6 +538,7 @@ func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
 			inChain = true
 			chainName = strings.Fields(trimmed)[1]
 			ruleCount = 0
+			rules = nil
 
 			// Extraer policy: "policy drop" o "policy accept"
 			policy := "accept"
@@ -373,21 +554,25 @@ func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
 					}
 				}
 			}
-			chains[chainName] = chainInfo{policy: policy, ruleCount: 0}
+			chains[chainName] = chainInfo{policy: policy, ruleCount: 0, rules: nil}
 			continue
 		}
 
-		// Contar reglas dentro de cadena (líneas que no sean {, }, type, #)
+		// Capturar reglas dentro de cadena (líneas que no sean {, }, type, #)
 		if inChain {
 			if strings.HasPrefix(trimmed, "}") {
 				inChain = false
 				info := chains[chainName]
 				info.ruleCount = ruleCount
+				info.rules = rules
 				chains[chainName] = info
 				continue
 			}
 			if trimmed != "" && !strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "type") &&
 				!strings.HasPrefix(trimmed, "policy") && trimmed != "{" && trimmed != "}" {
+				// Limpiar el `;` final para que se vea limpio en el drill-down
+				rule := strings.TrimSuffix(strings.TrimSpace(line), ";")
+				rules = append(rules, rule)
 				ruleCount++
 			}
 		}
@@ -395,27 +580,47 @@ func parseNftStatus(nftOutput string) (map[string]chainInfo, map[string]int) {
 		// Detectar sets: "set sm_whitelist4 {"
 		if strings.HasPrefix(trimmed, "set ") && strings.HasSuffix(trimmed, "{") {
 			setName := strings.Fields(trimmed)[1]
-			setCount := 0
 
-			// Contar elementos dentro del set
+			// Buscar la línea "elements = { ip1, ip2, ... }"
 			for j := i + 1; j < len(lines); j++ {
 				nextLine := strings.TrimSpace(lines[j])
 				if strings.HasPrefix(nextLine, "}") {
 					break
 				}
 				if strings.HasPrefix(nextLine, "elements = ") || strings.HasPrefix(nextLine, "elements=") {
-					// Parseo muy simple: contar comillas, cada elemento dentro está entre comillas
 					elementsPart := strings.TrimPrefix(nextLine, "elements = ")
 					elementsPart = strings.TrimPrefix(elementsPart, "elements=")
-					setCount = strings.Count(elementsPart, `"`) / 2 // cada elemento = 2 comillas
+					elementsPart = strings.TrimSuffix(elementsPart, "}")
+					elementsPart = strings.TrimSpace(elementsPart)
+					sets[setName] = parseSetElements(elementsPart)
 					break
 				}
 			}
-			sets[setName] = setCount
 		}
 	}
 
 	return chains, sets
+}
+
+// parseSetElements extrae cada IP/CIDR de la línea "elements = { ip1, ip2, ... }".
+// Cada elemento está entre comillas o separado por coma.
+func parseSetElements(elementsLine string) []string {
+	var result []string
+	if elementsLine == "" {
+		return result
+	}
+	// Quitar comillas envolventes si existen
+	elementsLine = strings.Trim(elementsLine, "{}")
+	// Separar por coma y limpiar cada elemento
+	parts := strings.Split(elementsLine, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.Trim(p, `"`)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // resetTable ejecuta delete table inet sm tras confirmación del operador.

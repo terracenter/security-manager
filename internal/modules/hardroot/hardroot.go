@@ -125,35 +125,91 @@ func (h *HardRoot) Menu() {
 	}
 }
 
+type hardrootStatus struct {
+	SudoersExists bool
+	SudoersSize   int64
+	SudoersDrift  bool   // true si el archivo actual difiere del template generado
+	RootPasswd    string // "BLOQUEADA" / "con contraseña" / "SIN contraseña" / "desconocido"
+	PermitRoot    string
+	PermitEmpty   string
+}
+
+// parseSudoersState mira un archivo sudoers del filesystem y determina si
+// existe, su tamaño, y si difiere del template generado por SM-NG.
+// Funcion pura testeable con t.TempDir().
+func parseSudoersState(path, template string) (exists bool, size int64, drift bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, 0, false
+	}
+	exists = true
+	size = info.Size()
+	if cur, err := os.ReadFile(path); err == nil {
+		drift = string(cur) != template
+	}
+	return
+}
+
+// parsePasswdStatus interpreta la salida de `passwd -S root` (o `passwd -S USER`).
+// Devuelve el estado en formato humano. Funcion pura testeable.
+func parsePasswdStatus(rawOutput string) string {
+	fields := strings.Fields(rawOutput)
+	if len(fields) < 2 {
+		return "desconocido"
+	}
+	switch fields[1] {
+	case "L":
+		return "BLOQUEADA ✓"
+	case "P":
+		return "con contraseña (activa)"
+	case "NP":
+		return "SIN contraseña ⚠"
+	default:
+		return "desconocido"
+	}
+}
+
+// collectStatus reune el estado actual de hardroot.
+// Llama a las funciones puras con los paths/valores reales del sistema.
+func collectStatus() hardrootStatus {
+	s := hardrootStatus{
+		RootPasswd:  "desconocido",
+		PermitRoot:  orUnset(sshdOption("PermitRootLogin")),
+		PermitEmpty: orUnset(sshdOption("PermitEmptyPasswords")),
+	}
+
+	// Passwd root via `passwd -S root`
+	if out, err := exec.Command("passwd", "-S", "root").Output(); err == nil {
+		s.RootPasswd = parsePasswdStatus(string(out))
+	}
+
+	// Sudoers
+	s.SudoersExists, s.SudoersSize, s.SudoersDrift = parseSudoersState(sudoersFile, sudoersContent)
+
+	return s
+}
+
 func (h *HardRoot) showStatus() {
 	fmt.Println()
-	fmt.Printf("  [SSH] PermitRootLogin      : %s\n", orUnset(sshdOption("PermitRootLogin")))
-	fmt.Printf("  [SSH] PermitEmptyPasswords : %s\n", orUnset(sshdOption("PermitEmptyPasswords")))
+	s := collectStatus()
 
-	out, err := exec.Command("passwd", "-S", "root").Output()
-	if err != nil {
-		fmt.Println("  [ROOT] Estado passwd       : ERROR al consultar")
+	fmt.Printf("  [SSH] PermitRootLogin      : %s\n", s.PermitRoot)
+	fmt.Printf("  [SSH] PermitEmptyPasswords : %s\n", s.PermitEmpty)
+	fmt.Printf("  [ROOT] Passwd root         : %s\n", s.RootPasswd)
+
+	fmt.Println()
+	fmt.Println("  Sudoers:")
+	if !s.SudoersExists {
+		fmt.Printf("    ✗ %s : no existe\n", sudoersFile)
 	} else {
-		fields := strings.Fields(string(out))
-		status := "desconocido"
-		if len(fields) >= 2 {
-			switch fields[1] {
-			case "L":
-				status = "BLOQUEADA ✓"
-			case "P":
-				status = "con contraseña (activa)"
-			case "NP":
-				status = "SIN contraseña ⚠"
-			}
+		fmt.Printf("    ✓ %s  (%d bytes)\n", sudoersFile, s.SudoersSize)
+		if s.SudoersDrift {
+			fmt.Println("    ⚠ DRIFT: el archivo fue modificado después de la última configuración de SM-NG")
 		}
-		fmt.Printf("  [ROOT] Passwd root         : %s\n", status)
 	}
 
-	if _, err := os.Stat(sudoersFile); os.IsNotExist(err) {
-		fmt.Printf("  [SUDO] %s : no existe\n", sudoersFile)
-	} else {
-		fmt.Printf("  [SUDO] %s : presente ✓\n", sudoersFile)
-	}
+	fmt.Println()
+	fmt.Println("  Detalle técnico → /var/log/security-manager-ng.log")
 }
 
 func (h *HardRoot) hardenSSH() {

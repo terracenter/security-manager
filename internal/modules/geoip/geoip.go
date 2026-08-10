@@ -208,6 +208,7 @@ func (g *GeoIP) listCountries() {
 		return
 	}
 	fmt.Println("\n  Países PERMITIDOS (solo estos alcanzan SSH/443/ICMP):")
+	fmt.Println("  Fecha = ultima descarga de rangos desde ipdeny.com")
 	fmt.Println()
 	for _, cc := range countries {
 		lower := strings.ToLower(cc)
@@ -483,15 +484,22 @@ func validateZoneFile(path string) error {
 	return fmt.Errorf("descarga sin CIDRs válidos (%d líneas)", len(lines))
 }
 
+// zoneStatus devuelve un string con count de rangos + fecha de modificacion
+// del zone file. Si el archivo no existe, devuelve "sin datos".
 func zoneStatus(path string) string {
-	lines, err := infra.ReadLines(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return "⚠ sin datos"
 	}
-	if strings.HasSuffix(path, ".zone6") {
-		return fmt.Sprintf("✓ IPv6 (%d rangos)", len(lines))
+	lines, err := infra.ReadLines(path)
+	if err != nil {
+		return fmt.Sprintf("⚠ error leyendo (%v)", err)
 	}
-	return fmt.Sprintf("✓ IPv4 (%d rangos)", len(lines))
+	date := info.ModTime().Format("2006-01-02")
+	if strings.HasSuffix(path, ".zone6") {
+		return fmt.Sprintf("✓ IPv6 (%d rangos, %s)", len(lines), date)
+	}
+	return fmt.Sprintf("✓ IPv4 (%d rangos, %s)", len(lines), date)
 }
 
 // RunAction implementa modules.CLIModule para modo no interactivo.

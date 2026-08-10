@@ -2,11 +2,15 @@ package blacklist
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/sys"
@@ -95,6 +99,88 @@ func (b *Blacklist) addIP() {
 	fmt.Printf("  Baneado %s → %s\n", entry, setName)
 }
 
+// parseSetElementsFromNft extrae cada IP/CIDR del output de `nft list set`.
+// Formatos aceptados:
+//   - "elements = { ip1, ip2, ... }"   (en una sola linea)
+//   - "elements = " seguido de "{ ip1, ip2 }" en la siguiente linea
+//   - "elements={ip1,ip2}"            (sin espacios)
+// Reuso la logica de firewall/parseSetElements via copia pequena (este
+// paquete no debe depender de firewall para evitar ciclo).
+func parseSetElementsFromNft(rawOutput string) []string {
+	var result []string
+	lines := strings.Split(rawOutput, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "elements") {
+			continue
+		}
+		// Si la linea actual tiene { y }, parsear aca mismo.
+		open := strings.Index(trimmed, "{")
+		close := strings.LastIndex(trimmed, "}")
+		if open >= 0 && close > open {
+			// Caso en una linea: "elements = { ip1, ip2 }"
+			result = append(result, splitSetBody(trimmed[open+1:close])...)
+			continue
+		}
+		// Caso multilinea: "elements" en una linea y "{ ip1, ip2 }" en la siguiente.
+		if i+1 < len(lines) {
+			next := strings.TrimSpace(lines[i+1])
+			open2 := strings.Index(next, "{")
+			close2 := strings.LastIndex(next, "}")
+			if open2 >= 0 && close2 > open2 {
+				result = append(result, splitSetBody(next[open2+1:close2])...)
+			}
+		}
+	}
+	return result
+}
+
+// splitSetBody divide el cuerpo "{ ip1, ip2, ip3 }" en sus elementos,
+// limpiando comillas y espacios.
+func splitSetBody(body string) []string {
+	var result []string
+	for _, p := range strings.Split(body, ",") {
+		p = strings.TrimSpace(p)
+		p = strings.Trim(p, `"`)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// lookupCountry consulta ipinfo.io (sin API key, solo el endpoint /country)
+// para resolver el pais de una IP. Best-effort: si falla, retorna "" y NO
+// rompe el listado (red caida, IP privada, rate-limit, etc).
+func lookupCountry(ip string) string {
+	// IPs privadas (RFC1918) y loopback: skip rapido.
+	if ip == "" {
+		return ""
+	}
+	// Heuristica simple para no pegarle a ipinfo con CIDR.
+	if strings.Contains(ip, "/") {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET",
+		"https://ipinfo.io/"+ip+"/country", nil)
+	req.Header.Set("User-Agent", "security-manager-ng/0.8")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return ""
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(body))
+}
+
 func (b *Blacklist) listIPs() {
 	fmt.Println()
 	for _, setName := range []string{infra.SetBlacklist4, infra.SetBlacklist6} {
@@ -104,11 +190,21 @@ func (b *Blacklist) listIPs() {
 				setName, strings.TrimSpace(string(out)))
 			continue
 		}
-		count := strings.Count(strings.TrimSpace(string(out)), "\n") + 1
-		if strings.TrimSpace(string(out)) == "" {
-			count = 0
+		elements := parseSetElementsFromNft(string(out))
+		if len(elements) == 0 {
+			fmt.Printf("  [%-20s] (vacio)\n", setName)
+			continue
 		}
-		b.logger.Screen(fmt.Sprintf("  %-20s %d entradas", setName, count))
+		fmt.Printf("\n  [%s] %d entradas:\n", setName, len(elements))
+		fmt.Printf("  %-22s %s\n", "IP/CIDR", "Pais")
+		fmt.Println("  " + strings.Repeat("─", 40))
+		for _, ip := range elements {
+			pais := lookupCountry(ip)
+			if pais == "" {
+				pais = "?"
+			}
+			fmt.Printf("  %-22s %s\n", ip, pais)
+		}
 		b.logger.Technical(strings.TrimSpace(string(out)))
 	}
 }

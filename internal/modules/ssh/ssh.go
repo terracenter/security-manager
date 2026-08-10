@@ -184,6 +184,49 @@ func (s *SSH) Reset() {
 	}
 }
 
+type sshConfigFile struct {
+	Path     string
+	Size     int64
+	ModTime  string // formato YYYY-MM-DD HH:MM:SS
+	IsOwn    bool   // true si es el archivo generado por SM-NG
+	IsFreeIPA bool  // true si parece override de FreeIPA (nombre contiene "ipa")
+	Exists   bool
+}
+
+// listConfigFiles lista los archivos en el directorio dado y los clasifica
+// contra baseConf (path absoluto esperado del archivo SM-NG) y patron FreeIPA.
+// Testeable: recibe el directorio por parametro en vez de leer la constante global.
+func listConfigFiles(dir string, ownFile string) []sshConfigFile {
+	var result []sshConfigFile
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return result
+	}
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		path := dir + "/" + f.Name()
+		info, err := os.Stat(path)
+		if err != nil {
+			result = append(result, sshConfigFile{
+				Path: path, Exists: false,
+			})
+			continue
+		}
+		nameLower := strings.ToLower(f.Name())
+		result = append(result, sshConfigFile{
+			Path:      path,
+			Size:      info.Size(),
+			ModTime:   info.ModTime().Format("2006-01-02 15:04:05"),
+			IsOwn:     path == ownFile,
+			IsFreeIPA: strings.Contains(nameLower, "ipa"),
+			Exists:    true,
+		})
+	}
+	return result
+}
+
 func (s *SSH) showStatus() {
 	fmt.Println()
 
@@ -195,10 +238,28 @@ func (s *SSH) showStatus() {
 
 	fmt.Println()
 	fmt.Println("  Archivos de configuración:")
-	if info, err := os.Stat(baseConf); err == nil {
-		fmt.Printf("    ✓ %s  (%s)\n", baseConf, info.ModTime().Format("2006-01-02 15:04:05"))
-	} else {
-		fmt.Printf("    ✗ %s\n", baseConf)
+	// Listar TODOS los archivos en sshd_config.d (no solo el de SM-NG).
+	// Esto permite ver si hay overrides (ej: FreeIPA 99-ipa.conf) sin abrir cada uno.
+	cfgs := listConfigFiles(configDir, baseConf)
+	if len(cfgs) == 0 {
+		fmt.Printf("    ✗ %s (directorio vacío o no existe)\n", configDir)
+	}
+	for _, c := range cfgs {
+		marker := "  "
+		note := ""
+		if c.IsOwn {
+			marker = "✓ "
+			note = " (generado por SM-NG)"
+		} else if c.IsFreeIPA {
+			marker = "⚠ "
+			note = " (override FreeIPA detectado)"
+		}
+		if !c.Exists {
+			fmt.Printf("    ✗ %s\n", c.Path)
+			continue
+		}
+		fmt.Printf("    %s%s  (%s, %d bytes)%s\n",
+			marker, c.Path, c.ModTime, c.Size, note)
 	}
 
 	out, err := exec.Command("sshd", "-T").Output()

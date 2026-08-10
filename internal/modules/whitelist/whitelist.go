@@ -213,25 +213,57 @@ func (w *Whitelist) persist(t tier, addr string) {
 func (w *Whitelist) listIPs(t tier) {
 	fmt.Printf("\n  %s\n", t.label)
 	total := 0
+	now := time.Now()
 	for _, f := range []string{t.file4, t.file6} {
 		entries, _ := infra.ReadACLEntries(f)
 		for _, e := range entries {
 			if total == 0 {
-				fmt.Printf("\n  %-22s %-18s %-24s %-12s %s\n",
-					"IP/CIDR", "Responsable", "Propósito", "Alta", "Vence")
-				fmt.Println("  " + strings.Repeat("─", 88))
+				fmt.Printf("\n  %-22s %-18s %-24s %-12s %-12s %s\n",
+					"IP/CIDR", "Responsable", "Propósito", "Alta", "Vence", "Estado")
+				fmt.Println("  " + strings.Repeat("─", 108))
 			}
 			venc := e.Vencimiento
+			estado := vencimientoStatus(e.Vencimiento, now)
 			if venc == "" {
 				venc = "permanente"
 			}
-			fmt.Printf("  %-22s %-18s %-24s %-12s %s\n",
-				e.Addr, e.Responsable, e.Proposito, e.FechaAlta, venc)
+			fmt.Printf("  %-22s %-18s %-24s %-12s %-12s %s\n",
+				e.Addr, e.Responsable, e.Proposito, e.FechaAlta, venc, estado)
 			total++
 		}
 	}
 	if total == 0 {
 		fmt.Println("\n  Sin entradas.")
+	}
+}
+
+// vencimientoStatus clasifica una fecha de vencimiento contra `now`.
+// Retorna un marcador humano para la vista de estado:
+//   - "" (vacio)               -> "permanente"
+//   - fecha invalida           -> "fecha inválida"
+//   - fecha < now              -> "⚠ VENCIDO"
+//   - diferencia <= 7 dias     -> "⚠ vence pronto"
+//   - diferencia > 7 dias      -> "OK"
+//   - diferencia > 30 dias     -> "OK (>30d)"
+// Funcion pura testeable (recibe now por parametro).
+func vencimientoStatus(vencimiento string, now time.Time) string {
+	if vencimiento == "" {
+		return "permanente"
+	}
+	t, err := time.Parse("2006-01-02", vencimiento)
+	if err != nil {
+		return "fecha inválida"
+	}
+	diff := t.Sub(now)
+	switch {
+	case diff < 0:
+		return "⚠ VENCIDO"
+	case diff <= 7*24*time.Hour:
+		return "⚠ vence pronto"
+	case diff <= 30*24*time.Hour:
+		return "OK"
+	default:
+		return "OK (>30d)"
 	}
 }
 
