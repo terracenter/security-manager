@@ -88,5 +88,30 @@
   "cli.cmd.ssh.validate": "Validar config activa (sshd -T)",
 
   "init.nftables.enabling": "Habilitando nftables.service para arranque automático",
-  "init.nftables.warn": "No se pudo habilitar nftables.service para arranque automático"
+  "init.nftables.warn": "No se pudo habilitar nftables.service para arranque automático",
+
+  "prereqs.install.needed": "Se necesitan instalar los siguientes paquetes en",
+  "prereqs.crowdsec.not_installed": "CrowdSec no instalado — integración avanzada no disponible.",
+  "prereqs.crowdsec.install_prompt": "¿Instalar CrowdSec ahora? [s/N]:",
+  "prereqs.crowdsec.registering_repo": "Registrando repositorio oficial CrowdSec (Packagecloud)...",
+  "prereqs.crowdsec.nftables_only": "CrowdSec no instalado — operando en modo nftables puro.",
+  "prereqs.crowdsec.disabling_capi": "Deshabilitando CAPI (modo offline local)...",
+  "prereqs.crowdsec.configuring_bouncer": "Configurando bouncer CrowdSec para usar tabla inet sm...",
+  "prereqs.warn.repo_register_failed": "Advertencia: no se pudo registrar repo CrowdSec",
+  "prereqs.warn.post_install_failed": "Advertencia: error configurando CrowdSec post-install",
+  "prereqs.warn.capi_disable_failed": "Advertencia: no se pudo deshabilitar CAPI automáticamente",
+  "prereqs.warn.bouncer_config_failed": "Advertencia: no se pudo configurar bouncer automáticamente",
+
+  "offer_install.no_pm.header": "Los paquetes requeridos",
+  "offer_install.no_pm.footer": "y no se detectó gestor de paquetes compatible. Instálalos manualmente.",
+  "offer_install.required": "Paquetes requeridos",
+  "offer_install.pm_detected": "Gestor detectado",
+  "offer_install.command": "Comando",
+  "offer_install.authorize_prompt": "¿Autorizar instalación? [s/N]:",
+  "offer_install.cancelled": "Instalación cancelada.",
+  "offer_install.running_apt_update": "Ejecutando apt update...",
+  "offer_install.running_install": "Ejecutando",
+  "offer_install.error.apt_update": "ERROR en apt update",
+  "offer_install.error.install_failed": "ERROR instalando",
+  "offer_install.success": "Paquetes instalados correctamente:"
 }

@@ -88,5 +88,30 @@
   "cli.cmd.ssh.validate": "Validate active config (sshd -T)",
 
   "init.nftables.enabling": "Enabling nftables.service for automatic startup",
-  "init.nftables.warn": "Could not enable nftables.service for automatic startup"
+  "init.nftables.warn": "Could not enable nftables.service for automatic startup",
+
+  "prereqs.install.needed": "The following packages need to be installed on",
+  "prereqs.crowdsec.not_installed": "CrowdSec not installed — advanced integration unavailable.",
+  "prereqs.crowdsec.install_prompt": "Install CrowdSec now? [y/N]:",
+  "prereqs.crowdsec.registering_repo": "Registering official CrowdSec repository (Packagecloud)...",
+  "prereqs.crowdsec.nftables_only": "CrowdSec not installed — operating in pure nftables mode.",
+  "prereqs.crowdsec.disabling_capi": "Disabling CAPI (local offline mode)...",
+  "prereqs.crowdsec.configuring_bouncer": "Configuring CrowdSec bouncer to use table inet sm...",
+  "prereqs.warn.repo_register_failed": "Warning: could not register CrowdSec repo",
+  "prereqs.warn.post_install_failed": "Warning: error configuring CrowdSec post-install",
+  "prereqs.warn.capi_disable_failed": "Warning: could not disable CAPI automatically",
+  "prereqs.warn.bouncer_config_failed": "Warning: could not configure bouncer automatically",
+
+  "offer_install.no_pm.header": "Required packages",
+  "offer_install.no_pm.footer": "and no compatible package manager was detected. Install them manually.",
+  "offer_install.required": "Required packages",
+  "offer_install.pm_detected": "Package manager",
+  "offer_install.command": "Command",
+  "offer_install.authorize_prompt": "Authorize installation? [y/N]:",
+  "offer_install.cancelled": "Installation cancelled.",
+  "offer_install.running_apt_update": "Running apt update...",
+  "offer_install.running_install": "Running",
+  "offer_install.error.apt_update": "ERROR in apt update",
+  "offer_install.error.install_failed": "ERROR installing",
+  "offer_install.success": "Packages installed successfully:"
 }

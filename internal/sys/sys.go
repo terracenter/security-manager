@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 )
 
 // GetSSHIP retorna la IP del cliente SSH activo, o "" si no aplica.
@@ -177,45 +179,45 @@ func OfferInstall(readLine func(string) string, pkgs ...string) bool {
 	pm := DetectPkgManager()
 	pkgList := strings.Join(pkgs, " ")
 	if pm == "" {
-		fmt.Printf("  Los paquetes requeridos (%s) no están instalados\n", pkgList)
-		fmt.Println("  y no se detectó gestor de paquetes compatible. Instálalos manualmente.")
+		fmt.Printf("  "+i18n.T("offer_install.no_pm.header")+" (%s)\n", pkgList)
+		fmt.Println("  " + i18n.T("offer_install.no_pm.footer"))
 		return false
 	}
 
-	fmt.Printf("\n  Paquetes requeridos : %s\n", pkgList)
-	fmt.Printf("  Gestor detectado   : %s\n", pm)
+	fmt.Printf("\n  "+i18n.T("offer_install.required")+" : %s\n", pkgList)
+	fmt.Printf("  "+i18n.T("offer_install.pm_detected")+"   : %s\n", pm)
 	if pm == "apt" {
-		fmt.Printf("  Comando            : apt update && apt install -y %s\n", pkgList)
+		fmt.Printf("  "+i18n.T("offer_install.command")+"            : apt update && apt install -y %s\n", pkgList)
 	} else {
-		fmt.Printf("  Comando            : %s install -y %s\n", pm, pkgList)
+		fmt.Printf("  "+i18n.T("offer_install.command")+"            : %s install -y %s\n", pm, pkgList)
 	}
 
-	resp := readLine("\n  ¿Autorizar instalación? [s/N]: ")
+	resp := readLine("\n  " + i18n.T("offer_install.authorize_prompt") + " ")
 	if strings.ToLower(resp) != "s" {
-		fmt.Println("  Instalación cancelada.")
+		fmt.Println("  " + i18n.T("offer_install.cancelled"))
 		return false
 	}
 
 	installArgs := append([]string{"install", "-y"}, pkgs...)
 	var installCmd *exec.Cmd
 	if pm == "apt" {
-		fmt.Println("\n  Ejecutando apt update...")
+		fmt.Println("\n  " + i18n.T("offer_install.running_apt_update"))
 		if err := exec.Command("apt", "update").Run(); err != nil {
-			fmt.Println("  ERROR en apt update:", err)
+			fmt.Println("  "+i18n.T("offer_install.error.apt_update")+":", err)
 			return false
 		}
-		fmt.Printf("  Ejecutando apt install -y %s...\n", pkgList)
+		fmt.Printf("  "+i18n.T("offer_install.running_install")+" %s...\n", pkgList)
 		installCmd = exec.Command("apt", installArgs...)
 	} else {
-		fmt.Printf("  Ejecutando %s install -y %s...\n", pm, pkgList)
+		fmt.Printf("  "+i18n.T("offer_install.running_install")+" %s install -y %s...\n", pm, pkgList)
 		installCmd = exec.Command(pm, installArgs...)
 	}
 	installCmd.Stdout = os.Stdout
 	installCmd.Stderr = os.Stderr
 	if err := installCmd.Run(); err != nil {
-		fmt.Printf("  ERROR instalando %s: %v\n", pkgList, err)
+		fmt.Printf("  "+i18n.T("offer_install.error.install_failed")+" %s: %v\n", pkgList, err)
 		return false
 	}
-	fmt.Printf("  Paquetes instalados correctamente: %s\n", pkgList)
+	fmt.Printf("  "+i18n.T("offer_install.success")+" %s\n", pkgList)
 	return true
 }
