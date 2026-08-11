@@ -1,6 +1,5 @@
 {
   "_comment": "Strings en espanol de Venezuela para Security Manager NG. Keys en snake_case. Sinonimos: NO usar (cada key es unica).",
-
   "menu.title": "Security Manager NG",
   "menu.version": "Versión",
   "menu.repo": "Repositorio",
@@ -18,7 +17,6 @@
   "menu.invalid.option": "Opción inválida.",
   "menu.invalid.range": "Opción fuera de rango.",
   "menu.exit.goodbye": "Saliendo. Hasta luego.",
-
   "reset.banner": "RESET GLOBAL — esto eliminará TODO lo gestionado por Security Manager NG",
   "reset.item.ruleset": "Tabla nftables inet sm + ruleset/backup/opciones/puertos",
   "reset.item.wl": "Whitelist / Immune (Tier A/B) + allowlist de crowdsec",
@@ -31,16 +29,13 @@
   "reset.confirm.cancelled": "Operación cancelada.",
   "reset.done": "Reset Global completado. El host está limpio de Security Manager NG.",
   "reset.module.prefix": "reset",
-
   "cli.usage": "Uso",
   "cli.module.not_found": "Módulo no encontrado.",
   "cli.module.available": "Módulos disponibles",
   "cli.module.no_cli": "El módulo no soporta CLI aún. Usa el menú interactivo.",
   "cli.missing.action": "Falta acción. Uso",
   "cli.no_args.help": "Sin argumentos: inicia el menú interactivo.",
-
   "cli.version.line": "Security Manager NG",
-
   "cli.cmd.firewall": "firewall",
   "cli.cmd.firewall.allow": "Abre puerto globalmente (bypass GeoIP)",
   "cli.cmd.firewall.deny": "Cierra puerto previamente abierto",
@@ -49,14 +44,12 @@
   "cli.cmd.firewall.apply": "Aplica / recarga ruleset base",
   "cli.cmd.firewall.reset": "Elimina tabla inet sm",
   "cli.cmd.firewall.port80": "Puerto 80 global (ACME/Let's Encrypt)",
-
   "cli.cmd.whitelist": "whitelist",
   "cli.cmd.whitelist.add": "Agregar IP a whitelist",
   "cli.cmd.whitelist.add_self": "Agregar IP de sesión SSH activa",
   "cli.cmd.whitelist.list": "Listar entradas",
   "cli.cmd.whitelist.del": "Eliminar entrada",
   "cli.cmd.whitelist.sync": "Sincronizar Tier B → crowdsec allowlist",
-
   "cli.cmd.geoip": "geoip",
   "cli.cmd.geoip.add": "Agregar países permitidos (ej: VE CO PE)",
   "cli.cmd.geoip.del": "Eliminar país de la lista",
@@ -65,19 +58,16 @@
   "cli.cmd.geoip.apply": "Aplicar / recargar ruleset GeoIP",
   "cli.cmd.geoip.reset": "Borrar lista de países y zone files",
   "cli.cmd.geoip.preview": "Vista previa del ruleset sm.nft",
-
   "cli.cmd.blacklist": "blacklist",
   "cli.cmd.blacklist.add": "Banear IP o red",
   "cli.cmd.blacklist.list": "Listar IPs baneadas",
   "cli.cmd.blacklist.del": "Eliminar del ban",
   "cli.cmd.blacklist.flush": "Vaciar blacklist completa",
-
   "cli.cmd.hardroot": "hardroot",
   "cli.cmd.hardroot.status": "Ver estado root/SSH/sudoers",
   "cli.cmd.hardroot.harden_ssh": "PermitRootLogin no + PermitEmptyPasswords no",
   "cli.cmd.hardroot.lock_root": "Bloquear cuenta root (passwd -l)",
   "cli.cmd.hardroot.sudoers": "Crear /etc/sudoers.d/sm-ng",
-
   "cli.cmd.ssh": "ssh",
   "cli.cmd.ssh.status": "Ver estado SSH hardening",
   "cli.cmd.ssh.apply": "Aplicar 10-sshd-base.conf",
@@ -86,10 +76,8 @@
   "cli.cmd.ssh.apply.auth3": "llave Y contraseña (MFA)",
   "cli.cmd.ssh.banners": "Escribir /etc/issue.net y /etc/issue",
   "cli.cmd.ssh.validate": "Validar config activa (sshd -T)",
-
   "init.nftables.enabling": "Habilitando nftables.service para arranque automático",
   "init.nftables.warn": "No se pudo habilitar nftables.service para arranque automático",
-
   "prereqs.install.needed": "Se necesitan instalar los siguientes paquetes en",
   "prereqs.crowdsec.not_installed": "CrowdSec no instalado — integración avanzada no disponible.",
   "prereqs.crowdsec.install_prompt": "¿Instalar CrowdSec ahora? [s/N]:",
@@ -101,7 +89,6 @@
   "prereqs.warn.post_install_failed": "Advertencia: error configurando CrowdSec post-install",
   "prereqs.warn.capi_disable_failed": "Advertencia: no se pudo deshabilitar CAPI automáticamente",
   "prereqs.warn.bouncer_config_failed": "Advertencia: no se pudo configurar bouncer automáticamente",
-
   "offer_install.no_pm.header": "Los paquetes requeridos",
   "offer_install.no_pm.footer": "y no se detectó gestor de paquetes compatible. Instálalos manualmente.",
   "offer_install.required": "Paquetes requeridos",
@@ -114,7 +101,6 @@
   "offer_install.error.apt_update": "ERROR en apt update",
   "offer_install.error.install_failed": "ERROR instalando",
   "offer_install.success": "Paquetes instalados correctamente:",
-
   "fw.name": "Firewall (nftables)",
   "fw.menu.header": "\n  ┌─ Firewall (nftables) ────────────────────────────�",
   "fw.menu.apply": "[1] Aplicar / recargar ruleset base",
@@ -129,7 +115,6 @@
   "fw.menu.no_public_ip": "Opción no disponible: este host no tiene IPs públicas.",
   "fw.invalid.option": "Opción inválida.",
   "fw.invalid.range": "Opción fuera de rango.",
-
   "fw.reset.eliminating": "Esto eliminará: tabla inet sm,",
   "fw.reset.eliminating_files": "y el include en /etc/nftables.conf.",
   "fw.reset.will_rerun_wizard": "El siguiente [1] Aplicar volverá a correr el wizard de detección de puertos.",
@@ -141,7 +126,6 @@
   "fw.reset.removed_file": "Eliminado:",
   "fw.reset.warn_remove": "ADVERTENCIA: no se pudo eliminar",
   "fw.reset.warn_general": "ADVERTENCIA:",
-
   "fw.port80.toggle_active": "\n  Puerto 80 global está ACTIVO. ¿Desactivar? [s/N]:",
   "fw.port80.toggle_inactive": "\n  Puerto 80 global está INACTIVO. ¿Activar para ACME/Let's Encrypt? [s/N]:",
   "fw.port80.cancelled": "Cancelado.",
@@ -151,7 +135,6 @@
   "fw.port80.activated_short": "Puerto 80 global: ACTIVADO.",
   "fw.port80.deactivated_short": "Puerto 80 global: INACTIVO.",
   "fw.port80.public_ip_prompt": "\n  Host con IP pública detectado. ¿Habilitar puerto 80 global para ACME/Let's Encrypt?\n  (No aplica si usas certificados auto-firmados) [s/N]:",
-
   "fw.apply.ssh_ip_warning": "\n  ⚠️  Tu IP de conexión SSH (%s) no está en la lista blanca.\n",
   "fw.apply.ssh_ip_lose_access": "      Si aplicas el firewall sin registrarla, perderás acceso al servidor.",
   "fw.apply.ssh_ip_prompt": "\n  ¿Agregar como IMMUNE (Tier B) ahora? [S/n]:",
@@ -164,7 +147,6 @@
   "fw.apply.tailscale_hint": "         fd7a:115c:a1e0::/48 a Tier B: whitelist add fd7a:115c:a1e0::/48 --tier B",
   "fw.apply.validating": "\n  Validando sintaxis (nft -c)...",
   "fw.apply.syntax_ok": "  Sintaxis OK.",
-
   "fw.status.firewall_inactive": "  ✗ Firewall: INACTIVO — Ninguna regla de seguridad está activa en este servidor.",
   "fw.status.firewall_inactive_hint": "     → Usa [1] Aplicar / recargar ruleset base para activarlo.",
   "fw.status.nftables_missing": "  ✗ nftables no está instalado — el firewall no puede funcionar.",
@@ -182,7 +164,6 @@
   "fw.status.drift_warning": "  ⚠ DRIFT detectado: el archivo sm.nft en disco fue modificado manualmente",
   "fw.status.drift_hint": "     después de la última apply. Próxima apply lo sobrescribirá.",
   "fw.status.technical_log": "  Detalles técnicos → /var/log/security-manager-ng.log",
-
   "fw.drilldown.header": "  ┌─ Drill-down ─────────────────────────────────────┐",
   "fw.drilldown.chain_opt": "[C] Ver reglas de una cadena",
   "fw.drilldown.set_opt": "[S] Ver elementos de un set",
@@ -190,7 +171,6 @@
   "fw.drilldown.footer": "└───────────────────────────────────────────────────┘",
   "fw.drilldown.no_chains": "  No hay cadenas para inspeccionar.",
   "fw.drilldown.no_sets": "  No hay sets para inspeccionar.",
-
   "fw.show.chains_avail": "  Cadenas disponibles:",
   "fw.show.chains_row": "    [%d] %-12s policy:%-8s — %d reglas\n",
   "fw.show.cancel": "    [0] Cancelar",
@@ -204,7 +184,6 @@
   "fw.show.set_header": "\n  ── Set: %s (%d entradas) ──\n",
   "fw.show.set_empty": "    (vacío)",
   "fw.show.element": "    %4d. %s\n",
-
   "fw.cli.usage_port80": "Uso: firewall port80 on|off",
   "fw.cli.invalid_value": "  Valor inválido '%s'. Usa: on | off\n",
   "fw.cli.unknown_action": "  Acción desconocida: '%s'\n",
@@ -225,7 +204,6 @@
   "fw.cli.ports_cols": "PUERTO",
   "fw.cli.ports_sep": "  ─",
   "fw.cli.ports_row": "  %-8d %-6s %-30s %s\n",
-
   "fw.wizard.detecting": "\n  Detectando servicios activos...",
   "fw.wizard.no_services": "  No se detectaron servicios activos.",
   "fw.wizard.prompt": "  ¿Cuáles puertos deseas permitir? (usa SPACE para marcar, ENTER para confirmar)",
@@ -245,7 +223,6 @@
   "fw.wizard.saved": "  Puertos guardados en %s\n",
   "fw.wizard.err_save": "     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.",
   "fw.wizard.err_log_hint": "     → Detalles técnicos en /var/log/security-manager-ng.log",
-
   "inspect.patterns_header": "  Patrones detectados:",
   "inspect.pattern_row": "    [%s%%] %s — %s\n",
   "inspect.recommendation.no_patterns": "No se detectaron patrones especificos. El ruleset parece ser un baseline generico. Considerar agregar whitelist/immune/blacklist segun el caso de uso.",
@@ -254,5 +231,54 @@
   "inspect.recommendation.rec_header": "\nRecomendaciones:\n",
   "inspect.recommendation.endpoint": "  - El host es ENDPOINT (no hace forward). Si queres que haga routing, agregar chain forward (ver ROADMAP P3).\n",
   "inspect.recommendation.nat": "  - NAT activo. Verificar que la tabla sm_nat (o prerouting/postrouting de inet sm) tiene las reglas correctas.\n",
-  "inspect.recommendation.no_input": "  - NO se detecto chain input. El ruleset esta vacio o solo tiene forward.\n"
+  "inspect.recommendation.no_input": "  - NO se detecto chain input. El ruleset esta vacio o solo tiene forward.\n",
+  "geoip.menu.header": "\n  ┌─ GeoIP — Países permitidos ─────────────┐",
+  "geoip.menu.footer": "  └─────────────────────────────────────────┘",
+  "geoip.menu.add": "│  [1] Agregar país a la lista             │",
+  "geoip.menu.del": "│  [2] Eliminar país de la lista           │",
+  "geoip.menu.list": "│  [3] Ver países permitidos               │",
+  "geoip.menu.update": "│  [4] Actualizar rangos (ipdeny.com)      │",
+  "geoip.menu.apply": "│  [5] Aplicar / recargar ruleset          │",
+  "geoip.menu.reset": "│  [6] Resetear GeoIP                      │",
+  "geoip.menu.preview": "│  [?] Vista previa del ruleset            │",
+  "geoip.legacy.blocklist.header": "\n  ⚠  AVISO: Se detectó blocked_countries.conf (formato GeoIP anterior — BLOCKLIST).",
+  "geoip.legacy.blocklist.allowlist_note": "     El módulo GeoIP ahora opera en modo ALLOWLIST (allowed_countries.conf).",
+  "geoip.legacy.blocklist.opposite": "     Los países del archivo anterior eran BLOQUEADOS — contenido semánticamente opuesto.",
+  "geoip.legacy.blocklist.reconfigure": "     Configura los países PERMITIDOS desde cero con [1].",
+  "geoip.reset.removed_file": "  Eliminado:",
+  "geoip.reset.not_found": "  No había",
+  "geoip.reset.warn_remove": "  ADVERTENCIA: no se pudo eliminar",
+  "geoip.add.prompt": "  Código(s) de país ISO 3166-1 alfa-2 a PERMITIR (ej: VE, CO, PE, DO):",
+  "geoip.add.already_present": "  %s ya está en la lista — omitido.\n",
+  "geoip.add.no_changes": "  Sin cambios — todos los países indicados ya estaban en la lista.",
+  "geoip.add.success": "\n  Agregado(s): %s\n",
+  "geoip.add.whitelist_warning": "  ⚠  Asegúrate de que tu IP esté en Whitelist antes de aplicar GeoIP.",
+  "geoip.del.prompt": "  Código de país a eliminar:",
+  "geoip.del.not_present": "  %s no está en la lista.\n",
+  "geoip.del.success": "  %s eliminado. Usa [5] para recargar el ruleset.\n",
+  "geoip.list.empty": "\n  Sin países en la lista de permitidos.",
+  "geoip.list.hint": "  Usa [1] para agregar países y [4]+[5] para descargar rangos y aplicar.",
+  "geoip.list.header": "\n  Países PERMITIDOS (solo estos alcanzan SSH/443/ICMP):",
+  "geoip.list.date_hint": "  Fecha = ultima descarga de rangos desde ipdeny.com",
+  "geoip.list.empty_hint": "  Sin países configurados. Agrega países con [1] primero.",
+  "geoip.err.bad_cc": "  ERROR: '%s' no es un código válido — usa 2 letras (ej: VE).\n",
+  "geoip.err.no_cc": "  ERROR: no se especificó ningún país.",
+  "geoip.err.read_config": "  ERROR leyendo config: %v\n",
+  "geoip.err.save_config": "  ERROR guardando config: %v\n",
+  "geoip.update.downloading": "  Descargando rangos GeoIP...",
+  "geoip.update.applying": "\n  Aplicando ruleset con GeoIP actualizado...",
+  "geoip.update.complete": "\n  Actualización completada. Usa [5] para aplicar el ruleset.",
+  "geoip.update.err_load": "  ERROR cargando datos GeoIP: %v\n",
+  "geoip.update.err_create_dir": "  ERROR creando %s: %v\n",
+  "geoip.update.dl_v4": "  [%s] descargando IPv4...\n",
+  "geoip.update.dl_v6": "  [%s] descargando IPv6...\n",
+  "geoip.update.warn_v4": "  [%s] IPv4 ⚠ %v — usando datos previos\n",
+  "geoip.update.warn_v6": "  [%s] IPv6 ⚠ %v — usando datos previos\n",
+  "geoip.update.err_v4": "  [%s] IPv4 ERROR: %v\n",
+  "geoip.update.err_v6": "  [%s] IPv6 ERROR: %v\n",
+  "geoip.update.ok_v4": "  [%s] IPv4 OK (%d rangos)\n",
+  "geoip.update.ok_v6": "  [%s] IPv6 OK (%d rangos)\n",
+  "geoip.preview.header": "\n  �─ Vista previa del ruleset (sm.nft) ─────┐",
+  "geoip.preview.footer": "  └─────────────────────────────────────┘",
+  "geoip.preview.generated_in": "Vista previa del ruleset sm.nft generada en"
 }
