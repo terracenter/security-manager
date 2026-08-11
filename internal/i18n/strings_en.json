@@ -244,5 +244,15 @@
   "fw.wizard.seq_ask_tier": "  GLOBAL (world) or GEO-restricted? [G/R]:",
   "fw.wizard.saved": "  Ports saved to %s\n",
   "fw.wizard.err_save": "     → Check permissions in /etc/security-manager/ or run with sudo.",
-  "fw.wizard.err_log_hint": "     → Technical details in /var/log/security-manager-ng.log"
+  "fw.wizard.err_log_hint": "     → Technical details in /var/log/security-manager-ng.log",
+
+  "inspect.patterns_header": "  Detected patterns:",
+  "inspect.pattern_row": "    [%s%%] %s — %s\n",
+  "inspect.recommendation.no_patterns": "No specific patterns detected. The ruleset appears to be a generic baseline. Consider adding whitelist/immune/blacklist depending on use case.",
+  "inspect.recommendation.header": "Detected patterns:\n",
+  "inspect.recommendation.item": "  - %s (confidence %d%%): %s\n",
+  "inspect.recommendation.rec_header": "\nRecommendations:\n",
+  "inspect.recommendation.endpoint": "  - The host is an ENDPOINT (does not forward). If you want it to route, add forward chain (see ROADMAP P3).\n",
+  "inspect.recommendation.nat": "  - NAT active. Verify that the sm_nat table (or prerouting/postrouting of inet sm) has the correct rules.\n",
+  "inspect.recommendation.no_input": "  - NO input chain detected. The ruleset is empty or only has forward.\n"
 }

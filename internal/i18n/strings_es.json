@@ -244,5 +244,15 @@
   "fw.wizard.seq_ask_tier": "  ¿GLOBAL (mundo) o GEO-restringido? [G/R]:",
   "fw.wizard.saved": "  Puertos guardados en %s\n",
   "fw.wizard.err_save": "     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.",
-  "fw.wizard.err_log_hint": "     → Detalles técnicos en /var/log/security-manager-ng.log"
+  "fw.wizard.err_log_hint": "     → Detalles técnicos en /var/log/security-manager-ng.log",
+
+  "inspect.patterns_header": "  Patrones detectados:",
+  "inspect.pattern_row": "    [%s%%] %s — %s\n",
+  "inspect.recommendation.no_patterns": "No se detectaron patrones especificos. El ruleset parece ser un baseline generico. Considerar agregar whitelist/immune/blacklist segun el caso de uso.",
+  "inspect.recommendation.header": "Patrones detectados:\n",
+  "inspect.recommendation.item": "  - %s (confianza %d%%): %s\n",
+  "inspect.recommendation.rec_header": "\nRecomendaciones:\n",
+  "inspect.recommendation.endpoint": "  - El host es ENDPOINT (no hace forward). Si queres que haga routing, agregar chain forward (ver ROADMAP P3).\n",
+  "inspect.recommendation.nat": "  - NAT activo. Verificar que la tabla sm_nat (o prerouting/postrouting de inet sm) tiene las reglas correctas.\n",
+  "inspect.recommendation.no_input": "  - NO se detecto chain input. El ruleset esta vacio o solo tiene forward.\n"
 }
