@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
 	"github.com/terracenter/security-manager-ng/internal/sys"
@@ -32,7 +33,7 @@ func New(logger *sys.SMLogger) *Firewall {
 }
 
 func (f *Firewall) Order() int   { return 1 }
-func (f *Firewall) Name() string { return "Firewall (nftables)" }
+func (f *Firewall) Name() string { return i18n.T("fw.name") }
 
 // Reset elimina la tabla inet sm y toda la configuración persistida del módulo
 // (ruleset, backup, opciones, puertos permitidos, e include en /etc/nftables.conf),
@@ -40,40 +41,40 @@ func (f *Firewall) Name() string { return "Firewall (nftables)" }
 // en vez de reutilizar silenciosamente la configuración de una corrida anterior.
 func (f *Firewall) Reset() {
 	if out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
-		fmt.Println("  (info) tabla inet sm ya no existía o no se pudo eliminar: " + strings.TrimSpace(string(out)))
+		fmt.Println("  " + i18n.T("fw.reset.info_not_found") + " " + strings.TrimSpace(string(out)))
 	} else {
-		fmt.Println("  Eliminado: tabla inet sm")
+		fmt.Println("  " + i18n.T("fw.reset.removed_table"))
 	}
 	for _, path := range []string{infra.RulesetFile, infra.BackupFile, infra.OptionsFile, infra.AllowedPortsFile} {
 		if err := os.Remove(path); err == nil {
-			fmt.Printf("  Eliminado: %s\n", path)
+			fmt.Printf("  %s %s\n", i18n.T("fw.reset.removed_file"), path)
 		} else if !os.IsNotExist(err) {
-			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+			fmt.Printf("  %s %s: %v\n", i18n.T("fw.reset.warn_remove"), path, err)
 		}
 	}
 	if err := infra.RemoveSmNftPersistence(); err != nil {
-		fmt.Printf("  ADVERTENCIA: %v\n", err)
+		fmt.Printf("  %s %v\n", i18n.T("fw.reset.warn_general"), err)
 	}
 }
 
 func (f *Firewall) Menu() {
 	for {
 		port80, _ := infra.ReadPort80Option()
-		port80Status := "INACTIVO"
+		port80Status := i18n.T("fw.port80.inactive")
 		if port80 {
-			port80Status = "ACTIVO ✓"
+			port80Status = i18n.T("fw.port80.active")
 		}
 
-		fmt.Println("\n  ┌─ Firewall (nftables) ────────────────────────────┐")
-		fmt.Println("  │  [1] Aplicar / recargar ruleset base              │")
-		fmt.Println("  │  [2] Ver estado actual                            │")
-		fmt.Println("  │  [3] Resetear tabla inet sm                       │")
+		fmt.Println(i18n.T("fw.menu.header"))
+		fmt.Println("  │  " + i18n.T("fw.menu.apply") + "             │")
+		fmt.Println("  │  " + i18n.T("fw.menu.status") + "                  │")
+		fmt.Println("  │  " + i18n.T("fw.menu.reset") + "             │")
 		if infra.HasPublicIP() {
-			fmt.Printf("  │  [4] Puerto 80 global (ACME/Let's Encrypt): %-8s│\n", port80Status)
+			fmt.Printf("  │  [4] %s: %-8s│\n", i18n.T("fw.menu.port80"), port80Status)
 		}
-		fmt.Println("  │  [0] Volver                                       │")
-		fmt.Println("  └───────────────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println("  │  " + i18n.T("fw.menu.back") + "                                       │")
+		fmt.Println(i18n.T("fw.menu.footer"))
+		fmt.Print("  " + i18n.T("fw.menu.prompt") + ": ")
 
 		if !f.scanner.Scan() {
 			return
@@ -89,12 +90,12 @@ func (f *Firewall) Menu() {
 			if infra.HasPublicIP() {
 				f.togglePort80()
 			} else {
-				fmt.Println("  Opción no disponible: este host no tiene IPs públicas.")
+				fmt.Println("  " + i18n.T("fw.menu.no_public_ip"))
 			}
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println("  " + i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -102,25 +103,25 @@ func (f *Firewall) Menu() {
 func (f *Firewall) togglePort80() {
 	current, _ := infra.ReadPort80Option()
 	if current {
-		fmt.Print("\n  Puerto 80 global está ACTIVO. ¿Desactivar? [s/N]: ")
+		fmt.Print(i18n.T("fw.port80.toggle_active") + " ")
 	} else {
-		fmt.Print("\n  Puerto 80 global está INACTIVO. ¿Activar para ACME/Let's Encrypt? [s/N]: ")
+		fmt.Print(i18n.T("fw.port80.toggle_inactive") + " ")
 	}
 	if !f.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(f.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println("  " + i18n.T("fw.port80.cancelled"))
 		return
 	}
 	if err := infra.WritePort80Option(!current); err != nil {
-		fmt.Printf("  ERROR guardando opción: %v\n", err)
+		fmt.Printf("  %s %v\n", i18n.T("fw.port80.error_save"), err)
 		return
 	}
 	if !current {
-		fmt.Println("  Puerto 80 global ACTIVADO. Recargando ruleset...")
+		fmt.Println("  " + i18n.T("fw.port80.activated_reload"))
 	} else {
-		fmt.Println("  Puerto 80 global DESACTIVADO. Recargando ruleset...")
+		fmt.Println("  " + i18n.T("fw.port80.deactivated_reload"))
 	}
 	f.applyBase()
 }
@@ -161,9 +162,9 @@ func (f *Firewall) applyBase() {
 	// SSH IP Guard: verificar que la IP SSH activa está en la lista blanca/immune
 	if sshIP := sys.GetSSHIP(); sshIP != "" {
 		if !ipExistsInACL(sshIP) {
-			fmt.Printf("\n  ⚠️  Tu IP de conexión SSH (%s) no está en la lista blanca.\n", sshIP)
-			fmt.Println("      Si aplicas el firewall sin registrarla, perderás acceso al servidor.")
-			fmt.Print("\n  ¿Agregar como IMMUNE (Tier B) ahora? [S/n]: ")
+			fmt.Printf(i18n.T("fw.apply.ssh_ip_warning"), sshIP)
+			fmt.Println(i18n.T("fw.apply.ssh_ip_lose_access"))
+			fmt.Print(i18n.T("fw.apply.ssh_ip_prompt") + " ")
 			f.scanner.Scan()
 			resp := strings.ToLower(strings.TrimSpace(f.scanner.Text()))
 			if resp == "s" {
@@ -176,12 +177,12 @@ func (f *Firewall) applyBase() {
 					f.logger.Error("No se pudo agregar la IP a la lista immune.", fmt.Sprintf("%v", err))
 					return
 				}
-				fmt.Printf("  ✓ %s agregada como IMMUNE (Tier B).\n", sshIP)
+				fmt.Printf(i18n.T("fw.apply.ssh_ip_added"), sshIP)
 			} else {
-				fmt.Printf("\n  ✗ No es posible aplicar el firewall sin registrar tu IP de acceso.\n")
-				fmt.Printf("    Agrégala primero:\n")
-				fmt.Printf("      security-manager-ng whitelist add %s --tier B\n", sshIP)
-				fmt.Printf("    Luego vuelve a ejecutar [1] Aplicar / recargar ruleset base.\n\n")
+				fmt.Print(i18n.T("fw.apply.ssh_ip_blocked"))
+				fmt.Print(i18n.T("fw.apply.ssh_ip_add_first"))
+				fmt.Printf(i18n.T("fw.apply.ssh_ip_use_cmd"), sshIP)
+				fmt.Print(i18n.T("fw.apply.ssh_ip_retry"))
 				return
 			}
 		}
@@ -208,15 +209,15 @@ func (f *Firewall) applyBase() {
 	// Si el host tiene IP pública y la opción aún no está configurada → preguntar al usuario.
 	if infra.HasPublicIP() {
 		if _, found := infra.ReadPort80Option(); !found {
-			fmt.Print("\n  Host con IP pública detectado. ¿Habilitar puerto 80 global para ACME/Let's Encrypt?\n  (No aplica si usas certificados auto-firmados) [s/N]: ")
+			fmt.Print(i18n.T("fw.port80.public_ip_prompt") + " ")
 			if f.scanner.Scan() {
 				answer := strings.ToLower(strings.TrimSpace(f.scanner.Text()))
 				enabled := answer == "s"
 				_ = infra.WritePort80Option(enabled)
 				if enabled {
-					fmt.Println("  Puerto 80 global: ACTIVADO.")
+					fmt.Println("  " + i18n.T("fw.port80.activated_short"))
 				} else {
-					fmt.Println("  Puerto 80 global: INACTIVO.")
+					fmt.Println("  " + i18n.T("fw.port80.deactivated_short"))
 				}
 			}
 		}
@@ -229,8 +230,8 @@ func (f *Firewall) applyBase() {
 
 	svc := infra.DetectGlobalServices()
 	if svc.TailscaleActive {
-		fmt.Println("  [info] Tailscale detectado. Si usas subnet routing IPv6, agrega el rango")
-		fmt.Println("         fd7a:115c:a1e0::/48 a Tier B: whitelist add fd7a:115c:a1e0::/48 --tier B")
+		fmt.Println(i18n.T("fw.apply.tailscale_detected"))
+		fmt.Println(i18n.T("fw.apply.tailscale_hint"))
 	}
 
 	tmpFile := infra.ConfDir + "/sm.nft.new"
@@ -240,13 +241,13 @@ func (f *Firewall) applyBase() {
 	}
 	defer os.Remove(tmpFile)
 
-	fmt.Println("\n  Validando sintaxis (nft -c)...")
+	fmt.Println(i18n.T("fw.apply.validating"))
 	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
 	if err != nil {
 		f.logger.Error("Error de sintaxis en el ruleset generado.", strings.TrimSpace(string(out)))
 		return
 	}
-	fmt.Println("  Sintaxis OK.")
+	fmt.Println(i18n.T("fw.apply.syntax_ok"))
 
 	// Backup del ruleset ACTUAL antes de sobreescribir (deadman revertirá a este).
 	if cur, err := os.ReadFile(infra.RulesetFile); err == nil {
@@ -297,11 +298,11 @@ func (f *Firewall) showStatus() {
 		errMsg := strings.TrimSpace(string(out))
 		// Distinguir si es "tabla no existe" o "nft no disponible"
 		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "no such table") {
-			fmt.Println("  ✗ Firewall: INACTIVO — Ninguna regla de seguridad está activa en este servidor.")
-			fmt.Println("     → Usa [1] Aplicar / recargar ruleset base para activarlo.")
+			fmt.Println(i18n.T("fw.status.firewall_inactive"))
+			fmt.Println(i18n.T("fw.status.firewall_inactive_hint"))
 		} else {
-			fmt.Println("  ✗ nftables no está instalado — el firewall no puede funcionar.")
-			fmt.Println("     → Ejecuta: sudo apt install nftables")
+			fmt.Println(i18n.T("fw.status.nftables_missing"))
+			fmt.Println(i18n.T("fw.status.nftables_install_hint"))
 		}
 		if f.logger != nil {
 			f.logger.Technical(errMsg)
@@ -312,24 +313,23 @@ func (f *Firewall) showStatus() {
 	// Parseo completo: cadenas con sus reglas + sets con sus elementos
 	chains, sets := parseNftStatus(string(out))
 
-	fmt.Println("  ✓ Firewall: ACTIVO")
-	fmt.Println()
+	fmt.Print(i18n.T("fw.status.active"))
 
 	if len(chains) > 0 {
-		fmt.Println("  Cadenas:")
+		fmt.Println(i18n.T("fw.status.chains_header"))
 		for name, info := range chains {
-			fmt.Printf("    %-12s policy:%-8s — %d reglas\n", name, info.policy, info.ruleCount)
+			fmt.Printf(i18n.T("fw.status.chain_row"), name, info.policy, info.ruleCount)
 		}
 		fmt.Println()
 	}
 
 	if len(sets) > 0 {
-		fmt.Println("  Sets:")
+		fmt.Println(i18n.T("fw.status.sets_header"))
 		for name, elements := range sets {
 			if len(elements) == 0 {
-				fmt.Printf("    %-20s (vacío)\n", name)
+				fmt.Printf(i18n.T("fw.status.set_empty"), name)
 			} else {
-				fmt.Printf("    %-20s %d entradas\n", name, len(elements))
+				fmt.Printf(i18n.T("fw.status.set_with_count"), name, len(elements))
 			}
 		}
 		fmt.Println()
@@ -338,7 +338,7 @@ func (f *Firewall) showStatus() {
 	// Metadata: timestamp + sha256 de la última apply (si existe manifest).
 	f.printManifestMetadata()
 
-	fmt.Println("  Detalles técnicos → /var/log/security-manager-ng.log")
+	fmt.Println(i18n.T("fw.status.technical_log"))
 	if f.logger != nil {
 		f.logger.Technical(string(out))
 	}
@@ -354,7 +354,7 @@ func (f *Firewall) printManifestMetadata() {
 	manifestPath := infra.RulesetFile + ".manifest"
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fmt.Println("  Última apply: (sin manifest — creada antes de esta versión)")
+		fmt.Println("  " + i18n.T("fw.status.no_manifest"))
 		return
 	}
 	var ts, hash string
@@ -367,19 +367,19 @@ func (f *Firewall) printManifestMetadata() {
 		}
 	}
 	if ts == "" || hash == "" {
-		fmt.Println("  Última apply: manifest corrupto o formato desconocido")
+		fmt.Println("  " + i18n.T("fw.status.manifest_corrupt"))
 		return
 	}
-	fmt.Printf("  Última apply: %s\n", ts)
-	fmt.Printf("  Hash ruleset: %s\n", hash)
+	fmt.Printf(i18n.T("fw.status.last_apply"), ts)
+	fmt.Printf(i18n.T("fw.status.hash"), hash)
 
 	// Drift detection: comparar hash del archivo actual vs manifest.
 	if cur, err := os.ReadFile(infra.RulesetFile); err == nil {
 		curHash := sha256.Sum256(cur)
 		curHex := fmt.Sprintf("%x", curHash)
 		if curHex != hash {
-			fmt.Println("  ⚠ DRIFT detectado: el archivo sm.nft en disco fue modificado manualmente")
-			fmt.Println("     después de la última apply. Próxima apply lo sobrescribirá.")
+			fmt.Println("  " + i18n.T("fw.status.drift_warning"))
+			fmt.Println("     " + i18n.T("fw.status.drift_hint"))
 		}
 	}
 }
@@ -392,16 +392,16 @@ func (f *Firewall) statusDrilldown(chains map[string]chainInfo, sets map[string]
 		return
 	}
 	for {
-		fmt.Println("  ┌─ Drill-down ─────────────────────────────────────┐")
+		fmt.Println(i18n.T("fw.drilldown.header"))
 		if len(chains) > 0 {
-			fmt.Println("  │  [C] Ver reglas de una cadena                   │")
+			fmt.Println("  │  " + i18n.T("fw.drilldown.chain_opt") + "            │")
 		}
 		if len(sets) > 0 {
-			fmt.Println("  │  [S] Ver elementos de un set                    │")
+			fmt.Println("  │  " + i18n.T("fw.drilldown.set_opt") + "                  │")
 		}
-		fmt.Println("  │  [0] Volver al menú de Firewall                 │")
-		fmt.Println("  └───────────────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println("  │  " + i18n.T("fw.drilldown.back") + "        │")
+		fmt.Println(i18n.T("fw.drilldown.footer"))
+		fmt.Print("  " + i18n.T("fw.menu.prompt") + ": ")
 
 		if !f.scanner.Scan() {
 			return
@@ -409,20 +409,20 @@ func (f *Firewall) statusDrilldown(chains map[string]chainInfo, sets map[string]
 		switch strings.ToUpper(strings.TrimSpace(f.scanner.Text())) {
 		case "C":
 			if len(chains) == 0 {
-				fmt.Println("  No hay cadenas para inspeccionar.")
+				fmt.Println("  " + i18n.T("fw.drilldown.no_chains"))
 				continue
 			}
 			f.showChainRules(chains)
 		case "S":
 			if len(sets) == 0 {
-				fmt.Println("  No hay sets para inspeccionar.")
+				fmt.Println("  " + i18n.T("fw.drilldown.no_sets"))
 				continue
 			}
 			f.showSetElements(sets)
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println("  " + i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -430,7 +430,7 @@ func (f *Firewall) statusDrilldown(chains map[string]chainInfo, sets map[string]
 // showChainRules lista las cadenas y deja elegir una para ver todas sus reglas.
 func (f *Firewall) showChainRules(chains map[string]chainInfo) {
 	fmt.Println()
-	fmt.Println("  Cadenas disponibles:")
+	fmt.Println(i18n.T("fw.show.chains_avail"))
 	names := make([]string, 0, len(chains))
 	for name := range chains {
 		names = append(names, name)
@@ -438,77 +438,77 @@ func (f *Firewall) showChainRules(chains map[string]chainInfo) {
 	sort.Strings(names)
 	for i, name := range names {
 		info := chains[name]
-		fmt.Printf("    [%d] %-12s policy:%-8s — %d reglas\n", i+1, name, info.policy, info.ruleCount)
+		fmt.Printf(i18n.T("fw.show.chains_row"), i+1, name, info.policy, info.ruleCount)
 	}
-	fmt.Printf("    [0] Cancelar\n")
-	fmt.Print("  Cadena a inspeccionar: ")
+	fmt.Println(i18n.T("fw.show.cancel"))
+	fmt.Print(i18n.T("fw.show.chain_prompt") + " ")
 
 	if !f.scanner.Scan() {
 		return
 	}
 	var sel int
 	if _, err := fmt.Sscanf(strings.TrimSpace(f.scanner.Text()), "%d", &sel); err != nil {
-		fmt.Println("  Opción inválida.")
+		fmt.Println("  " + i18n.T("fw.invalid.option"))
 		return
 	}
 	if sel == 0 {
 		return
 	}
 	if sel < 1 || sel > len(names) {
-		fmt.Println("  Opción fuera de rango.")
+		fmt.Println("  " + i18n.T("fw.invalid.range"))
 		return
 	}
 	chosen := names[sel-1]
 	info := chains[chosen]
-	fmt.Printf("\n  ── Cadena: %s (policy: %s) ──\n", chosen, info.policy)
+	fmt.Printf(i18n.T("fw.show.chain_header"), chosen, info.policy)
 	if len(info.rules) == 0 {
-		fmt.Println("    (sin reglas)")
+		fmt.Println("    " + i18n.T("fw.show.chain_empty"))
 		return
 	}
 	for i, rule := range info.rules {
-		fmt.Printf("    %3d. %s\n", i+1, rule)
+		fmt.Printf(i18n.T("fw.show.rule"), i+1, rule)
 	}
 }
 
 // showSetElements lista los sets y deja elegir uno para ver sus elementos.
 func (f *Firewall) showSetElements(sets map[string][]string) {
 	fmt.Println()
-	fmt.Println("  Sets disponibles:")
+	fmt.Println(i18n.T("fw.show.sets_avail"))
 	names := make([]string, 0, len(sets))
 	for name := range sets {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for i, name := range names {
-		fmt.Printf("    [%d] %-20s %d entradas\n", i+1, name, len(sets[name]))
+		fmt.Printf(i18n.T("fw.show.sets_row"), i+1, name, len(sets[name]))
 	}
-	fmt.Printf("    [0] Cancelar\n")
-	fmt.Print("  Set a inspeccionar: ")
+	fmt.Println(i18n.T("fw.show.cancel"))
+	fmt.Print(i18n.T("fw.show.set_prompt") + " ")
 
 	if !f.scanner.Scan() {
 		return
 	}
 	var sel int
 	if _, err := fmt.Sscanf(strings.TrimSpace(f.scanner.Text()), "%d", &sel); err != nil {
-		fmt.Println("  Opción inválida.")
+		fmt.Println("  " + i18n.T("fw.invalid.option"))
 		return
 	}
 	if sel == 0 {
 		return
 	}
 	if sel < 1 || sel > len(names) {
-		fmt.Println("  Opción fuera de rango.")
+		fmt.Println("  " + i18n.T("fw.invalid.range"))
 		return
 	}
 	chosen := names[sel-1]
 	elements := sets[chosen]
-	fmt.Printf("\n  ── Set: %s (%d entradas) ──\n", chosen, len(elements))
+	fmt.Printf(i18n.T("fw.show.set_header"), chosen, len(elements))
 	if len(elements) == 0 {
-		fmt.Println("    (vacío)")
+		fmt.Println("    " + i18n.T("fw.show.set_empty"))
 		return
 	}
 	for i, elem := range elements {
-		fmt.Printf("    %4d. %s\n", i+1, elem)
+		fmt.Printf(i18n.T("fw.show.element"), i+1, elem)
 	}
 }
 
@@ -625,16 +625,16 @@ func parseSetElements(elementsLine string) []string {
 
 // resetTable ejecuta delete table inet sm tras confirmación del operador.
 func (f *Firewall) resetTable() {
-	fmt.Println("\n  ⚠  Esto eliminará: tabla inet sm, " + infra.RulesetFile + ", " +
+	fmt.Println("\n  ⚠ " + i18n.T("fw.reset.eliminating") + " " + infra.RulesetFile + ", " +
 		infra.BackupFile + ", " + infra.OptionsFile + ", " + infra.AllowedPortsFile +
-		" y el include en /etc/nftables.conf.")
-	fmt.Println("     El siguiente [1] Aplicar volverá a correr el wizard de detección de puertos.")
-	fmt.Print("  ¿Confirmar? [s/N]: ")
+		" " + i18n.T("fw.reset.eliminating_files"))
+	fmt.Println("     " + i18n.T("fw.reset.will_rerun_wizard"))
+	fmt.Print("  " + i18n.T("fw.reset.confirm") + " ")
 	if !f.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(f.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println("  " + i18n.T("fw.reset.cancelled"))
 		return
 	}
 	f.Reset()
@@ -665,31 +665,31 @@ func (f *Firewall) RunAction(action string, args ...string) bool {
 		f.applyBase()
 		return true
 	case "reset":
-		fmt.Println("  [firewall] Eliminando tabla inet sm y configuración persistida...")
+		fmt.Println("  " + i18n.T("fw.reset.deleting"))
 		f.Reset()
 		return true
 	case "port80":
 		if len(args) == 0 {
-			fmt.Println("  Uso: firewall port80 on|off")
+			fmt.Println("  " + i18n.T("fw.cli.usage_port80"))
 			return false
 		}
 		switch strings.ToLower(args[0]) {
 		case "on", "true":
 			_ = infra.WritePort80Option(true)
-			fmt.Println("  [firewall] Puerto 80 global ACTIVADO. Recargando ruleset...")
+			fmt.Println("  " + i18n.T("fw.port80.activated_reload"))
 			f.applyBase()
 		case "off", "false":
 			_ = infra.WritePort80Option(false)
-			fmt.Println("  [firewall] Puerto 80 global DESACTIVADO. Recargando ruleset...")
+			fmt.Println("  " + i18n.T("fw.port80.deactivated_reload"))
 			f.applyBase()
 		default:
-			fmt.Printf("  Valor inválido '%s'. Usa: on | off\n", args[0])
+			fmt.Printf(i18n.T("fw.cli.invalid_value"), args[0])
 			return false
 		}
 		return true
 	default:
-		fmt.Printf("  Acción desconocida: '%s'\n", action)
-		fmt.Println("  Acciones disponibles: allow, deny, list-ports, estado, apply, reset, port80")
+		fmt.Printf(i18n.T("fw.cli.unknown_action"), action)
+		fmt.Println(i18n.T("fw.cli.available_actions"))
 		return false
 	}
 }
@@ -704,12 +704,12 @@ func (f *Firewall) cliAllow(args []string) bool {
 		return false
 	}
 	if *port < 1 || *port > 65535 {
-		fmt.Println("  ERROR: --port es obligatorio y debe estar entre 1 y 65535.")
+		fmt.Println(i18n.T("fw.cli.err_port_required"))
 		return false
 	}
 	p := strings.ToLower(*proto)
 	if p != "tcp" && p != "udp" {
-		fmt.Printf("  ERROR: --proto debe ser 'tcp' o 'udp', no '%s'.\n", *proto)
+		fmt.Printf(i18n.T("fw.cli.err_proto"), *proto)
 		return false
 	}
 
@@ -718,12 +718,12 @@ func (f *Firewall) cliAllow(args []string) bool {
 	if *tier != "" {
 		tierValue = strings.ToUpper(*tier)
 		if tierValue != "GLOBAL" && tierValue != "GEO" {
-			fmt.Printf("  ERROR: --tier debe ser 'global' o 'geo', no '%s'.\n", *tier)
+			fmt.Printf(i18n.T("fw.cli.err_tier"), *tier)
 			return false
 		}
 	} else if isTerminal(os.Stdin) {
 		// Preguntar interactivamente
-		resp := f.readLine("  ¿Acceso GLOBAL (mundo) o GEO-restringido? [G/R]: ")
+		resp := f.readLine(i18n.T("fw.cli.tier_prompt") + " ")
 		if strings.ToLower(resp) == "g" {
 			tierValue = "GLOBAL"
 		}
@@ -740,14 +740,14 @@ func (f *Firewall) cliAllow(args []string) bool {
 		fmt.Printf("  ERROR: %v\n", err)
 		return false
 	}
-	fmt.Printf("  [firewall] Puerto %d/%s (%s) agregado a %s.\n", *port, p, tierValue, infra.AllowedPortsFile)
+	fmt.Printf(i18n.T("fw.cli.tier_added"), *port, p, tierValue, infra.AllowedPortsFile)
 	if tierValue == "GLOBAL" {
-		fmt.Printf("  ✓ Acceso global (bypass GeoIP).\n")
+		fmt.Print(i18n.T("fw.cli.global_ok"))
 	} else {
-		fmt.Printf("  ✓ Acceso GEO-restringido (solo países configurados).\n")
+		fmt.Print(i18n.T("fw.cli.geo_ok"))
 	}
-	fmt.Printf("  Cierra con: firewall deny --port %d --proto %s\n", *port, p)
-	fmt.Println("  Recargando ruleset...")
+	fmt.Printf(i18n.T("fw.cli.deny_hint"), *port, p)
+	fmt.Println("  " + i18n.T("fw.cli.reloading"))
 	f.applyBase()
 	return true
 }
@@ -760,20 +760,20 @@ func (f *Firewall) cliDeny(args []string) bool {
 		return false
 	}
 	if *port < 1 || *port > 65535 {
-		fmt.Println("  ERROR: --port es obligatorio y debe estar entre 1 y 65535.")
+		fmt.Println(i18n.T("fw.cli.err_port_required"))
 		return false
 	}
 	p := strings.ToLower(*proto)
 	if p != "tcp" && p != "udp" {
-		fmt.Printf("  ERROR: --proto debe ser 'tcp' o 'udp', no '%s'.\n", *proto)
+		fmt.Printf(i18n.T("fw.cli.err_proto"), *proto)
 		return false
 	}
 	if err := infra.RemovePortEntry(*port, p); err != nil {
 		fmt.Printf("  ERROR: %v\n", err)
 		return false
 	}
-	fmt.Printf("  [firewall] Puerto %d/%s eliminado de %s.\n", *port, p, infra.AllowedPortsFile)
-	fmt.Println("  Recargando ruleset...")
+	fmt.Printf(i18n.T("fw.cli.removed"), *port, p, infra.AllowedPortsFile)
+	fmt.Println("  " + i18n.T("fw.cli.reloading"))
 	f.applyBase()
 	return true
 }
@@ -781,17 +781,17 @@ func (f *Firewall) cliDeny(args []string) bool {
 func (f *Firewall) cliListPorts() bool {
 	entries, err := infra.ReadPortEntries(infra.AllowedPortsFile)
 	if err != nil {
-		fmt.Printf("  ERROR leyendo %s: %v\n", infra.AllowedPortsFile, err)
+		fmt.Printf(i18n.T("fw.cli.err_read"), infra.AllowedPortsFile, err)
 		return false
 	}
 	if len(entries) == 0 {
-		fmt.Println("  No hay puertos adicionales abiertos.")
+		fmt.Println("  " + i18n.T("fw.cli.no_ports"))
 		return true
 	}
-	fmt.Printf("\n  %-8s %-6s %-30s %s\n", "PUERTO", "PROTO", "COMENTARIO", "FECHA")
-	fmt.Println("  " + strings.Repeat("─", 58))
+	fmt.Printf(i18n.T("fw.cli.ports_header"), i18n.T("fw.cli.ports_cols"), "PROTO", "COMENTARIO", "FECHA")
+	fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 58))
 	for _, e := range entries {
-		fmt.Printf("  %-8d %-6s %-30s %s\n", e.Port, e.Proto, e.Comment, e.Date)
+		fmt.Printf(i18n.T("fw.cli.ports_row"), e.Port, e.Proto, e.Comment, e.Date)
 	}
 	fmt.Println()
 	return true
@@ -845,13 +845,13 @@ func (f *Firewall) runSequentialWizard(services []sys.ServiceInfo) (bool, error)
 		}
 
 		// Preguntar si permitir el puerto
-		resp := f.readLine(fmt.Sprintf("  Puerto %d (%s) — ¿Permitir? [s/N]: ", svc.Port, procName))
+		resp := f.readLine(fmt.Sprintf(i18n.T("fw.wizard.seq_ask_port"), svc.Port, procName))
 		if strings.ToLower(resp) != "s" {
 			continue
 		}
 
 		// Preguntar tier
-		tierResp := f.readLine("  ¿GLOBAL (mundo) o GEO-restringido? [G/R]: ")
+		tierResp := f.readLine(i18n.T("fw.wizard.seq_ask_tier") + " ")
 		tier := "GEO"
 		if strings.ToLower(tierResp) == "g" {
 			tier = "GLOBAL"
@@ -869,11 +869,11 @@ func (f *Firewall) runSequentialWizard(services []sys.ServiceInfo) (bool, error)
 				fmt.Sprintf("No se pudo guardar la configuración de puertos en %s.", infra.AllowedPortsFile),
 				fmt.Sprintf("%v", err),
 			)
-			fmt.Println("     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.")
-			fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+			fmt.Println("     " + i18n.T("fw.wizard.err_save"))
+			fmt.Println("     " + i18n.T("fw.wizard.err_log_hint"))
 			return false, err
 		}
-		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
+		fmt.Printf(i18n.T("fw.wizard.saved"), infra.AllowedPortsFile)
 	}
 
 	return sshEnabled, nil
@@ -894,7 +894,7 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 		label := fmt.Sprintf("%d (%s)", svc.Port, procName)
 		// Nota especial para puerto 80
 		if svc.Port == 80 {
-			label += " — requerido para renovación Let's Encrypt"
+			label += i18n.T("fw.wizard.letsencrypt_hint")
 		}
 		options = append(options, label)
 		serviceMap[label] = svc
@@ -905,7 +905,7 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 	for {
 		selectedLabels = nil
 		prompt := &survey.MultiSelect{
-			Message: "  ¿Cuáles puertos deseas permitir? (usa SPACE para marcar, ENTER para confirmar)",
+			Message: i18n.T("fw.wizard.prompt"),
 			Options: options,
 		}
 		if err := survey.AskOne(prompt, &selectedLabels); err != nil {
@@ -915,7 +915,7 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 		if len(selectedLabels) > 0 {
 			break
 		}
-		fmt.Println("  (no seleccionaste ningún puerto, reintentar)")
+		fmt.Println("  " + i18n.T("fw.wizard.no_selection"))
 		fmt.Println()
 	}
 
@@ -936,16 +936,16 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 		}
 	}
 	if !sshInSelection {
-		fmt.Println("\n  ⚠️⚠️⚠️  ADVERTENCIA CRÍTICA  ⚠️⚠️⚠️")
-		fmt.Println("  Estás a punto de CERRAR el puerto SSH (22) en el firewall.")
-		fmt.Println("  Si no tienes otro método de acceso (consola física, IPMI/iDRAC, VPN),")
-		fmt.Println("  PERDERÁS EL ACCESO REMOTO A ESTE SERVIDOR.")
+		fmt.Println(i18n.T("fw.wizard.ssh_warning"))
+		fmt.Println(i18n.T("fw.wizard.ssh_closing"))
+		fmt.Println(i18n.T("fw.wizard.ssh_lose_access"))
+		fmt.Println(i18n.T("fw.wizard.ssh_perderas"))
 		fmt.Println()
 		readLine := func(prompt string) string {
 			return f.readLine(prompt)
 		}
-		if !sys.ConfirmStrong(readLine, "  Escribe 'cerrar ssh' para confirmar: ", "cerrar ssh") {
-			fmt.Println("  SSH permanece abierto (no se confirmó el cierre).")
+		if !sys.ConfirmStrong(readLine, i18n.T("fw.wizard.ssh_confirm")+" ", "cerrar ssh") {
+			fmt.Println("  " + i18n.T("fw.wizard.ssh_kept"))
 			fmt.Println()
 			// Forzar SSH en la selección
 			selected = append(selected, sys.ServiceInfo{Port: 22, Proto: "tcp", ProcessName: "sshd"})
@@ -957,9 +957,9 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 
 	// Preguntar tier una sola vez para el batch completo
 	tierPrompt := &survey.Select{
-		Message: "  ¿Los puertos SELECCIONADOS serán [G]lobal o [R]egional?",
-		Options: []string{"GLOBAL", "GEO (regional)"},
-		Default: "GEO (regional)",
+		Message: i18n.T("fw.wizard.tier_question"),
+		Options: []string{"GLOBAL", i18n.T("fw.wizard.tier_options")},
+		Default: i18n.T("fw.wizard.tier_default"),
 	}
 	var tierChoice string
 	if err := survey.AskOne(tierPrompt, &tierChoice); err != nil {
@@ -980,11 +980,11 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 				fmt.Sprintf("No se pudo guardar la configuración de puertos en %s.", infra.AllowedPortsFile),
 				fmt.Sprintf("%v", err),
 			)
-			fmt.Println("     → Verifica permisos en /etc/security-manager/ o ejecuta con sudo.")
-			fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+			fmt.Println("     " + i18n.T("fw.wizard.err_save"))
+			fmt.Println("     " + i18n.T("fw.wizard.err_log_hint"))
 			return false, err
 		}
-		fmt.Printf("  Puertos guardados en %s\n", infra.AllowedPortsFile)
+		fmt.Printf(i18n.T("fw.wizard.saved"), infra.AllowedPortsFile)
 	}
 
 	return sshEnabled, nil
@@ -992,16 +992,16 @@ func (f *Firewall) runInteractiveWizard(services []sys.ServiceInfo) (bool, error
 
 // runServiceWizard dispatcher — selecciona entre menú interactivo o preguntas secuenciales.
 func (f *Firewall) runServiceWizard() (bool, error) {
-	fmt.Println("\n  Detectando servicios activos...")
+	fmt.Println(i18n.T("fw.wizard.detecting"))
 	services, err := sys.DetectListeningServices()
 	if err != nil {
 		f.logger.Error("Error inesperado al detectar servicios.", fmt.Sprintf("%v", err))
-		fmt.Println("     → Detalles técnicos en /var/log/security-manager-ng.log")
+		fmt.Println("     " + i18n.T("fw.wizard.err_log_hint"))
 		return false, err
 	}
 
 	if len(services) == 0 {
-		fmt.Println("  No se detectaron servicios activos.")
+		fmt.Println("  " + i18n.T("fw.wizard.no_services"))
 		return true, nil // sin servicios detectados, SSH histórico permanece abierto
 	}
 
