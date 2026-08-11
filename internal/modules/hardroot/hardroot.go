@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
@@ -56,54 +57,54 @@ func backupSshdConfig() error {
 // valor previo a passwd -l), y borra el sudoers propio del módulo.
 func (h *HardRoot) Reset() {
 	if err := os.Remove(sudoersFile); err == nil {
-		fmt.Printf("  Eliminado: %s\n", sudoersFile)
+		fmt.Printf(i18n.T("geoip.reset.removed_file")+" %s\n", sudoersFile)
 	} else if os.IsNotExist(err) {
-		fmt.Println("  No había configuración de sudoers de sm-ng.")
+		fmt.Println(i18n.T("hardroot.reset.no_sudoers"))
 	} else {
-		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", sudoersFile, err)
+		fmt.Printf(i18n.T("geoip.reset.warn_remove")+" %s: %v\n", sudoersFile, err)
 	}
 
 	if data, err := os.ReadFile(sshdConfigBackup); err == nil {
 		tmpFile := sshdConfigBackup + ".restore-tmp"
 		if err := os.WriteFile(tmpFile, data, 0o644); err != nil {
-			fmt.Println("  ADVERTENCIA: no se pudo preparar la restauración de sshd_config.")
+			fmt.Println(i18n.T("hardroot.reset.warn_no_sshd_restore"))
 		} else {
 			if out, err := exec.Command("sshd", "-t", "-f", tmpFile).CombinedOutput(); err != nil {
-				fmt.Printf("  ADVERTENCIA: el backup de sshd_config no pasó la validación (%s) — no se restauró.\n",
+				fmt.Printf(i18n.T("hardroot.reset.warn_sshd_backup_invalid")+" %s) — no se restauró.\n",
 					strings.TrimSpace(string(out)))
 			} else if err := os.WriteFile(sshdConfig, data, 0o644); err != nil {
-				fmt.Printf("  ADVERTENCIA: no se pudo restaurar %s: %v\n", sshdConfig, err)
+				fmt.Printf(i18n.T("hardroot.reset.warn_sshd_restore_failed")+" %s: %v\n", sshdConfig, err)
 			} else {
 				if err := reloadSSHD(); err != nil {
-					fmt.Printf("  ADVERTENCIA: sshd_config restaurado pero no se pudo recargar sshd: %v\n", err)
+					fmt.Printf(i18n.T("hardroot.reset.warn_sshd_reload_failed")+" %v\n", err)
 				} else {
-					fmt.Println("  Restaurado: " + sshdConfig + " a su estado previo — sshd recargado.")
+					fmt.Println(i18n.T("hardroot.reset.restored_sshd"))
 				}
 				_ = os.Remove(sshdConfigBackup)
 			}
 			os.Remove(tmpFile)
 		}
 	} else if !os.IsNotExist(err) {
-		fmt.Printf("  ADVERTENCIA: no se pudo leer el backup de sshd_config: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.reset.warn_no_sshd_backup_read")+" %v\n", err)
 	}
 
 	if out, err := exec.Command("passwd", "-u", "root").CombinedOutput(); err != nil {
-		fmt.Println("  (info) cuenta root no estaba bloqueada o no se pudo desbloquear: " + strings.TrimSpace(string(out)))
+		fmt.Println(i18n.T("hardroot.reset.info_root_not_unlocked") + " " + strings.TrimSpace(string(out)))
 	} else {
-		fmt.Println("  Cuenta root desbloqueada (passwd -u root) — revertida a su estado previo.")
+		fmt.Println(i18n.T("hardroot.reset.root_unlocked"))
 	}
 }
 
 func (h *HardRoot) Menu() {
 	for {
-		fmt.Println("\n  ┌─ HardRoot — Hardening root ────────────┐")
-		fmt.Println("  │  [1] Ver estado actual                  │")
-		fmt.Println("  │  [2] Endurecer SSH root (sshd_config)   │")
-		fmt.Println("  │  [3] Bloquear cuenta root (passwd)      │")
-		fmt.Println("  │  [4] Configurar sudoers (/sudoers.d)    │")
-		fmt.Println("  │  [0] Volver                             │")
-		fmt.Println("  └────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println(i18n.T("hardroot.menu.header"))
+		fmt.Println(i18n.T("hardroot.menu.estado"))
+		fmt.Println(i18n.T("hardroot.menu.harden_ssh"))
+		fmt.Println(i18n.T("hardroot.menu.lock_root"))
+		fmt.Println(i18n.T("hardroot.menu.sudoers"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("hardroot.menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !h.scanner.Scan() {
 			return
@@ -120,7 +121,7 @@ func (h *HardRoot) Menu() {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -193,71 +194,74 @@ func (h *HardRoot) showStatus() {
 	fmt.Println()
 	s := collectStatus()
 
-	fmt.Printf("  [SSH] PermitRootLogin      : %s\n", s.PermitRoot)
-	fmt.Printf("  [SSH] PermitEmptyPasswords : %s\n", s.PermitEmpty)
-	fmt.Printf("  [ROOT] Passwd root         : %s\n", s.RootPasswd)
+	fmt.Printf(i18n.T("hardroot.status.permit_root")+" %s\n", s.PermitRoot)
+	fmt.Printf(i18n.T("hardroot.status.permit_empty")+" %s\n", s.PermitEmpty)
+	fmt.Printf(i18n.T("hardroot.status.root_passwd")+" %s\n", s.RootPasswd)
 
 	fmt.Println()
-	fmt.Println("  Sudoers:")
+	fmt.Println(i18n.T("hardroot.status.sudoers"))
 	if !s.SudoersExists {
-		fmt.Printf("    ✗ %s : no existe\n", sudoersFile)
+		fmt.Printf(i18n.T("hardroot.status.sudoers_missing")+" %s : no existe\n", sudoersFile)
 	} else {
-		fmt.Printf("    ✓ %s  (%d bytes)\n", sudoersFile, s.SudoersSize)
+		fmt.Printf(i18n.T("hardroot.status.sudoers_ok")+" %s  (%d bytes)\n", sudoersFile, s.SudoersSize)
 		if s.SudoersDrift {
-			fmt.Println("    ⚠ DRIFT: el archivo fue modificado después de la última configuración de SM-NG")
+			fmt.Println(i18n.T("hardroot.status.sudoers_drift"))
 		}
 	}
 
 	fmt.Println()
-	fmt.Println("  Detalle técnico → /var/log/security-manager-ng.log")
+	fmt.Println(i18n.T("fw.status.technical_log"))
 }
 
 func (h *HardRoot) hardenSSH() {
-	fmt.Println("\n  Configurará en sshd_config:")
-	fmt.Println("    PermitRootLogin no")
-	fmt.Println("    PermitEmptyPasswords no")
-	if users := sudoCapableUsers(); len(users) == 0 {
-		fmt.Println("\n  ⚠  ADVERTENCIA: no se detectó ningún usuario sudo/wheel distinto de root.")
-		fmt.Println("     Con PermitRootLogin no podrías perder el acceso SSH a este host.")
+	fmt.Println()
+	fmt.Println(i18n.T("hardroot.harden_ssh.intro"))
+	fmt.Println(i18n.T("hardroot.harden_ssh.perm_root_no"))
+	fmt.Println(i18n.T("hardroot.harden_ssh.perm_empty_no"))
+
+	users := sudoCapableUsers()
+	if len(users) == 0 {
+		fmt.Println()
+		fmt.Println(i18n.T("hardroot.harden_ssh.warn_no_sudo"))
+		fmt.Println(i18n.T("hardroot.harden_ssh.warn_no_sudo_detail"))
 	} else {
-		fmt.Printf("\n  Usuarios sudo/wheel con acceso alterno: %s\n", strings.Join(users, ", "))
+		fmt.Printf("\n  "+i18n.T("hardroot.harden_ssh.sudo_users")+" %s\n", strings.Join(users, ", "))
 	}
-	fmt.Print("  ¿Confirmar? [s/N]: ")
+	fmt.Print(i18n.T("hardroot.harden_ssh.confirm") + " ")
 	if !h.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(h.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println(i18n.T("hardroot.cancelled"))
 		return
 	}
 
 	if err := backupSshdConfig(); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo respaldar sshd_config antes de modificar (%v) — "+
-			"Reset() no podrá revertir estos cambios automáticamente.\n", err)
+		fmt.Printf(i18n.T("hardroot.harden_ssh.warn_backup")+
+			"passwd -l root) — "+i18n.T("hardroot.harden_ssh.warn_no_restore")+" %v)\n", err)
 	}
 
 	if err := setSshdOption("PermitRootLogin", "no"); err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
 	if err := setSshdOption("PermitEmptyPasswords", "no"); err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
-	fmt.Println("  sshd_config actualizado.")
+	fmt.Println(i18n.T("hardroot.harden_ssh.success"))
 
-	// Validar sintaxis antes de recargar — evita recargar con una config rota.
 	if out, err := exec.Command("sshd", "-t").CombinedOutput(); err != nil {
 		h.logger.Error("La configuración SSH no pasó la validación.", strings.TrimSpace(string(out)))
-		fmt.Println("  Revisa /etc/ssh/sshd_config manualmente. No se recargó sshd.")
+		fmt.Println(i18n.T("hardroot.harden_ssh.manual_review"))
 		return
 	}
 
 	if err := reloadSSHD(); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo recargar sshd: %v\n", err)
-		fmt.Println("  Ejecuta manualmente: systemctl reload ssh")
+		fmt.Printf(i18n.T("hardroot.harden_ssh.warn_reload")+" %v\n", err)
+		fmt.Println(i18n.T("hardroot.harden_ssh.manual_reload"))
 	} else {
-		fmt.Println("  sshd recargado correctamente.")
+		fmt.Println(i18n.T("hardroot.harden_ssh.reloaded"))
 	}
 }
 
@@ -265,55 +269,56 @@ func (h *HardRoot) lockRoot() {
 	out, err := exec.Command("passwd", "-S", "root").Output()
 	if err == nil {
 		if fields := strings.Fields(string(out)); len(fields) >= 2 && fields[1] == "L" {
-			fmt.Println("\n  La cuenta root ya está bloqueada. Sin cambios.")
+			fmt.Println()
+			fmt.Println(i18n.T("hardroot.lock_root.already_locked"))
 			return
 		}
 	}
 
-	if users := sudoCapableUsers(); len(users) == 0 {
-		fmt.Println("\n  ⚠  ADVERTENCIA: sin usuario sudo/wheel alterno — bloquear root puede dejarte sin escalada de privilegios.")
+	if len(sudoCapableUsers()) == 0 {
+		fmt.Println()
+		fmt.Println(i18n.T("hardroot.lock_root.warn_no_sudo"))
+		fmt.Println(i18n.T("hardroot.lock_root.warn_no_sudo_detail"))
 	}
-
-	fmt.Print("\n  ¿Bloquear la cuenta root (passwd -l root)? [s/N]: ")
+	fmt.Print(i18n.T("hardroot.lock_root.confirm") + " ")
 	if !h.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(h.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println(i18n.T("hardroot.cancelled"))
 		return
 	}
 
-	out2, err2 := exec.Command("passwd", "-l", "root").CombinedOutput()
-	if err2 != nil {
-		fmt.Printf("  ERROR: %s\n", strings.TrimSpace(string(out2)))
+	if out2, err := exec.Command("passwd", "-l", "root").CombinedOutput(); err != nil {
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %s\n", strings.TrimSpace(string(out2)))
 		return
 	}
-	fmt.Println("  Cuenta root bloqueada correctamente.")
+	fmt.Println(i18n.T("hardroot.lock_root.success"))
 }
 
 func (h *HardRoot) configureSudoers() {
-	prompt := "¿Crear"
+	prompt := i18n.T("hardroot.sudoers.prompt_create")
 	if _, err := os.Stat(sudoersFile); err == nil {
-		fmt.Printf("\n  %s ya existe.\n", sudoersFile)
-		prompt = "¿Sobreescribir"
+		fmt.Printf("\n  "+i18n.T("hardroot.sudoers.exists")+" %s\n", sudoersFile)
+		prompt = i18n.T("hardroot.sudoers.prompt_overwrite")
 	} else {
-		fmt.Printf("\n  Creará %s con:\n", sudoersFile)
-		fmt.Println("    Defaults timestamp_timeout=5")
-		fmt.Println("    Defaults requiretty")
-		fmt.Println("    Defaults logfile=\"/var/log/sudo.log\"")
+		fmt.Printf("\n  "+i18n.T("hardroot.sudoers.will_create")+" %s con:\n", sudoersFile)
+		fmt.Println(i18n.T("hardroot.sudoers.content_line_1"))
+		fmt.Println(i18n.T("hardroot.sudoers.content_line_2"))
+		fmt.Println(i18n.T("hardroot.sudoers.content_line_3"))
 	}
-	fmt.Printf("  %s %s? [s/N]: ", prompt, sudoersFile)
+	fmt.Printf("  "+i18n.T("hardroot.sudoers.confirm")+" %s? [s/N]: ", prompt, sudoersFile)
 	if !h.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(h.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println(i18n.T("hardroot.cancelled"))
 		return
 	}
 
 	tmpFile := "/tmp/sm-ng-sudoers"
 	if err := os.WriteFile(tmpFile, []byte(sudoersContent), 0o640); err != nil {
-		fmt.Printf("  ERROR escribiendo archivo temporal: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
 	defer os.Remove(tmpFile)
@@ -325,14 +330,14 @@ func (h *HardRoot) configureSudoers() {
 	}
 
 	if err := os.MkdirAll(sudoersDir, 0o750); err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
 	if err := os.WriteFile(sudoersFile, []byte(sudoersContent), 0o440); err != nil {
-		fmt.Printf("  ERROR escribiendo %s: %v\n", sudoersFile, err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
-	fmt.Printf("  %s configurado correctamente.\n", sudoersFile)
+	fmt.Printf(i18n.T("hardroot.sudoers.success")+" %s\n", sudoersFile)
 }
 
 // sshdOption retorna el valor activo (sin comentarios) de una directiva en sshd_config.
@@ -461,70 +466,70 @@ func (h *HardRoot) RunAction(action string, args ...string) bool {
 	case "harden-ssh", "hardenssh":
 		users := sudoCapableUsers()
 		if len(users) == 0 {
-			fmt.Println("  ⚠  ADVERTENCIA: sin usuario sudo/wheel alterno. Verifica antes de continuar.")
+			fmt.Println(i18n.T("hardroot.cli.warn_no_sudo"))
 		} else {
-			fmt.Printf("  Usuarios sudo/wheel alternativos: %s\n", strings.Join(users, ", "))
+			fmt.Printf(i18n.T("hardroot.cli.sudo_users_alt")+" %s\n", strings.Join(users, ", "))
 		}
-		fmt.Println("  [cli] Aplicando PermitRootLogin no + PermitEmptyPasswords no...")
+		fmt.Println(i18n.T("hardroot.cli.applying"))
 		if err := setSshdOption("PermitRootLogin", "no"); err != nil {
-			fmt.Printf("  ERROR: %v\n", err)
+			fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
 		if err := setSshdOption("PermitEmptyPasswords", "no"); err != nil {
-			fmt.Printf("  ERROR: %v\n", err)
+			fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
 		if out, err := exec.Command("sshd", "-t").CombinedOutput(); err != nil {
-			fmt.Printf("  ERROR: sshd -t falló:\n%s\n", strings.TrimSpace(string(out)))
+			fmt.Printf(i18n.T("hardroot.err.sshd_t_failed")+"\n%s\n", strings.TrimSpace(string(out)))
 			return false
 		}
 		if err := reloadSSHD(); err != nil {
-			fmt.Printf("  ADVERTENCIA: %v\n", err)
+			fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		} else {
-			fmt.Println("  sshd recargado correctamente.")
+			fmt.Println(i18n.T("hardroot.cli.reloaded_ok"))
 		}
 		return true
 	case "lock-root", "lockroot":
 		out, err := exec.Command("passwd", "-S", "root").Output()
 		if err == nil {
 			if fields := strings.Fields(string(out)); len(fields) >= 2 && fields[1] == "L" {
-				fmt.Println("  La cuenta root ya está bloqueada. Sin cambios.")
+				fmt.Println(i18n.T("hardroot.lock_root.already_locked"))
 				return true
 			}
 		}
-		fmt.Println("  [cli] Bloqueando cuenta root...")
+		fmt.Println(i18n.T("hardroot.cli.locking_root"))
 		out2, err2 := exec.Command("passwd", "-l", "root").CombinedOutput()
 		if err2 != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %s\n", strings.TrimSpace(string(out2)))
+			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %s\n", strings.TrimSpace(string(out2)))
 			return false
 		}
-		fmt.Println("  Cuenta root bloqueada correctamente.")
+		fmt.Println(i18n.T("hardroot.lock_root.success"))
 		return true
 	case "sudoers":
-		fmt.Println("  [cli] Configurando sudoers...")
+		fmt.Println(i18n.T("hardroot.cli.configuring_sudoers"))
 		tmpFile := "/tmp/sm-ng-sudoers"
 		if err := os.WriteFile(tmpFile, []byte(sudoersContent), 0o640); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
 		defer os.Remove(tmpFile)
 		if out, err := exec.Command("visudo", "-c", "-f", tmpFile).CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR validación visudo: %s\n", strings.TrimSpace(string(out)))
+			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.visudo_failed")+" %s\n", strings.TrimSpace(string(out)))
 			return false
 		}
 		if err := os.MkdirAll(sudoersDir, 0o750); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
 		if err := os.WriteFile(sudoersFile, []byte(sudoersContent), 0o440); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR escribiendo %s: %v\n", sudoersFile, err)
+			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
-		fmt.Printf("  %s configurado correctamente.\n", sudoersFile)
+		fmt.Printf(i18n.T("hardroot.sudoers.success")+" %s\n", sudoersFile)
 		return true
 	default:
-		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
-		fmt.Fprintln(os.Stderr, "  Acciones: estado, harden-ssh, lock-root, sudoers")
+		fmt.Fprintf(os.Stderr, i18n.T("hardroot.cli.unknown_action")+" %s\n", action)
+		fmt.Fprintln(os.Stderr, i18n.T("hardroot.cli.available_actions"))
 		return false
 	}
 }
