@@ -466,6 +466,7 @@ func DetectGlobalServices() GlobalServices {
 // Formato persistido (pipe-delimited):
 //
 //	puerto | proto | tier | comentario | fecha
+//
 // tier: "GLOBAL" (stage 7a, bypass GeoIP) | "GEO" (stage 8, post-GeoIP)
 type PortEntry struct {
 	Port    int
@@ -486,8 +487,9 @@ func (p PortEntry) String() string {
 
 // ReadPortEntries lee allowed_ports.conf. Retorna nil sin error si el archivo no existe.
 // Soporta dos formatos:
-//   Nuevo: puerto | proto | tier | comentario | fecha
-//   Viejo: puerto | proto | comentario | fecha (retrocompatibilidad — tier defaults a GEO)
+//
+//	Nuevo: puerto | proto | tier | comentario | fecha
+//	Viejo: puerto | proto | comentario | fecha (retrocompatibilidad — tier defaults a GEO)
 func ReadPortEntries(path string) ([]PortEntry, error) {
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
@@ -804,7 +806,7 @@ table inet sm {
 		geoipRulesBlock(geoip),
 		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
-	) + smNatTableTemplate
+	) + smNatTableTemplate + smForwardTableTemplate
 }
 
 func formatSet(name, addrType, _ string, elements []string) string {
