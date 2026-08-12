@@ -173,8 +173,16 @@ func testProperty_TablesOrder(t *rapid.T) {
 
 // Propiedad 3: sshEnabled=true => contiene linea SSH con el puerto.
 // sshEnabled=false => NO contiene linea SSH dentro de chain input.
+//
+// Skip: si sshPort=80, port80=true, sshEnabled=false, la cadena input
+// contiene 'tcp dport 80 accept' por la regla port80, indistinguible
+// de la regla SSH que se evaluaria. No es un caso interesante para
+// esta propiedad (SSH puro).
 func testProperty_SSHToggle(t *rapid.T) {
 	in := inputGen().Draw(t, "input")
+	if !in.sshEnabled && in.sshPort == 80 && in.port80 {
+		t.Skip("sshPort=80 + port80=true: ambiguo con regla port80")
+	}
 	rs := GenerateRulesetWith(in.svc, in.sshPort, in.sshEnabled, in.geo, in.port80)
 
 	expected := "tcp dport " + strconv.Itoa(in.sshPort) + " accept"
@@ -197,8 +205,15 @@ func testProperty_SSHToggle(t *rapid.T) {
 
 // Propiedad 4: port80=true => contiene 'tcp dport 80 accept'.
 // port80=false => NO contiene esa linea dentro de chain input.
+//
+// Skip: si sshPort=80, sshEnabled=true, port80=false, la cadena input
+// contiene 'tcp dport 80 accept' por la regla SSH, indistinguible de
+// la regla port80. No es un caso interesante para esta propiedad.
 func testProperty_Port80Toggle(t *rapid.T) {
 	in := inputGen().Draw(t, "input")
+	if !in.port80 && in.sshEnabled && in.sshPort == 80 {
+		t.Skip("sshPort=80 + sshEnabled=true: ambiguo con regla SSH")
+	}
 	rs := GenerateRulesetWith(in.svc, in.sshPort, in.sshEnabled, in.geo, in.port80)
 
 	if in.port80 {
