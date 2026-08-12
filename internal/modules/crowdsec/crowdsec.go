@@ -6,7 +6,32 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
+
+// Crowdsec es el modulo interactivo + CLI que administra la integracion con
+// CrowdSec (instalacion, allowlist, status). Logica de negocio sigue viva
+// en las funciones de paquete (SyncAllowlist, RemoveFromAllowlist, etc.).
+type Crowdsec struct {
+	scanner *bufio.Scanner
+	logger  *sys.SMLogger
+}
+
+// New construye el modulo Crowdsec. Sigue el patron de los otros modulos
+// (blacklist/whitelist/etc.): recibe logger, retorna *Crowdsec.
+func New(logger *sys.SMLogger) *Crowdsec {
+	return &Crowdsec{scanner: bufio.NewScanner(os.Stdin), logger: logger}
+}
+
+// Order define la posicion en el menu principal. Posicionado DESPUES de
+// los modulos de firewall/conectividad (1-6) y ANTES de los de hardening
+// (8-9). Posicion 7 es razonable para "servicios externos".
+func (c *Crowdsec) Order() int { return 7 }
+
+// Name es el titulo visible en el menu. NO migra a i18n todavia — eso
+// es Subtarea D. Literal hardcoded es aceptable en este punto.
+func (c *Crowdsec) Name() string { return "CrowdSec" }
 
 // SyncAllowlist sincroniza IPs IMMUNE de SM-NG al allowlist de CrowdSec.
 // Lee los archivos de IPs immune y llama a cscli allowlists add por cada IP/CIDR.

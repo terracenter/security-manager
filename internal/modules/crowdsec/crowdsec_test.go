@@ -1,6 +1,7 @@
 package crowdsec
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,14 @@ func TestRemoveFromAllowlist_NoCscli_NoOp(t *testing.T) {
 
 	if err := RemoveFromAllowlist([]string{immuneFile}); err != nil {
 		t.Fatalf("RemoveFromAllowlist con crowdsec no instalado debe retornar nil, got: %v", err)
+	}
+}
+
+// TestRunAction_UnknownAction retorna false y muestra usage en stderr.
+func TestRunAction_UnknownAction(t *testing.T) {
+	c := &Crowdsec{scanner: bufio.NewScanner(strings.NewReader(""))}
+	if c.RunAction("foo") {
+		t.Error(`RunAction("foo") debe retornar false`)
 	}
 }
 

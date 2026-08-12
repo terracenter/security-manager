@@ -11,6 +11,7 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules"
 	"github.com/terracenter/security-manager-ng/internal/modules/blacklist"
+	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 	"github.com/terracenter/security-manager-ng/internal/modules/firewall"
 	"github.com/terracenter/security-manager-ng/internal/modules/geoip"
 	"github.com/terracenter/security-manager-ng/internal/modules/hardroot"
@@ -63,6 +64,7 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 		blacklist.New(logger),
 		hardroot.New(logger),
 		ssh.New(),
+		crowdsec.New(logger),
 		// Tarea 12: fail2ban fue removido en favor de crowdsec.
 		// crowdsec ya tiene su modulo (`internal/modules/crowdsec`).
 	}
