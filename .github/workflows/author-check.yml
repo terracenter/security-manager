@@ -1,0 +1,98 @@
+name: Author identity check
+
+# Caso verificado 2026-08-12: 5 commits en `main` quedaron firmados por
+# `Claude@contabo <claude@terracenter.local>` porque no había enforcement
+# automatizado de la regla de autoría. Detalle completo en vault:
+# Planes/Security-Manager-NG/incidentes/2026-08-12-leak-claude-author.md
+# y LEY_PRINCIPAL.md líneas 219-240.
+#
+# Este workflow falla el CI si cualquier commit en el push/branch tiene
+# un autor o co-autor que no sea `Freddy Taborda <terracenter@gmail.com>`.
+# NO usa git-secrets ni APIs externas: solo `git log` + `awk/regex`.
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "dev-*"
+  pull_request:
+    branches:
+      - main
+      - dev
+      - "dev-*"
+
+permissions:
+  contents: read
+
+jobs:
+  author-check:
+    name: Validar autoría (no IA)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Necesitamos toda la historia para validar TODOS los commits
+          # del push, no solo HEAD. Para PRs contra main, fetch-depth=0
+          # trae el historial completo.
+          fetch-depth: 0
+
+      - name: Detectar commits con autor o co-autor no permitido
+        env:
+          # Mantener sincronizado con LEY_PRINCIPAL.md sección "Autoría de commits".
+          ALLOWED_AUTHOR: "Freddy Taborda <terracenter@gmail.com>"
+        run: |
+          set -euo pipefail
+
+          # 1. Validar el autor del HEAD del push.
+          HEAD_AUTHOR="$(git log -1 --format='%an <%ae>' HEAD)"
+          echo "Autor del HEAD: $HEAD_AUTHOR"
+          if [ "$HEAD_AUTHOR" != "$ALLOWED_AUTHOR" ]; then
+            echo "::error::Autor del HEAD no permitido: '$HEAD_AUTHOR' (esperado '$ALLOWED_AUTHOR')"
+            echo "Regla: Obsidian/LEY_PRINCIPAL.md líneas 219-240. No se commitea con identidad de IA."
+            exit 1
+          fi
+
+          # 2. Validar autor de cada commit entre HEAD y el mergebase con
+          # origin/main (o origin/dev si es PR contra dev). Esto cubre
+          # casos donde el push trae varios commits.
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            BASE="origin/main"
+          elif git rev-parse --verify origin/dev >/dev/null 2>&1; then
+            BASE="origin/dev"
+          else
+            # Primer push al repo, no hay base. Validar los últimos 20 commits.
+            BASE="$(git log --format='%H' -n 20 | tail -1)"
+          fi
+
+          echo "Comparando commits entre HEAD y $BASE"
+
+          # Buscar autores que no sean el permitido.
+          BAD_AUTHORS="$(git log --format='%an <%ae>' "${BASE}..HEAD" \
+            | grep -vF "$ALLOWED_AUTHOR" || true)"
+
+          if [ -n "$BAD_AUTHORS" ]; then
+            echo "::error::Commits con autor no permitido:"
+            echo "$BAD_AUTHORS" | sed 's/^/  - /'
+            echo ""
+            echo "Regla: Obsidian/LEY_PRINCIPAL.md líneas 219-240. Cada commit debe tener autor:"
+            echo "  $ALLOWED_AUTHOR"
+            exit 1
+          fi
+
+          # 3. Validar co-autorías prohibidas (Co-Authored-By / Co-authored-by).
+          # Usa regex case-insensitive para tolerar variaciones de capitalización.
+          BAD_COAUTHORS="$(git log --format='%B' "${BASE}..HEAD" \
+            | grep -iE '^[[:space:]]*Co-authored-by:.*(@anthropic\.com|@openai\.com|@nousresearch\.com|@google\.com|@contabo|@humanbyte)' \
+            || true)"
+
+          if [ -n "$BAD_COAUTHORS" ]; then
+            echo "::error::Commits con co-autor no permitido:"
+            echo "$BAD_COAUTHORS" | sed 's/^/  - /'
+            echo ""
+            echo "Regla: Obsidian/LEY_PRINCIPAL.md línea 235. Prohibido Co-Authored-By de IA."
+            exit 1
+          fi
+
+          echo "OK: todos los commits válidos."
