@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
@@ -28,31 +29,31 @@ func New(logger *sys.SMLogger) *Blacklist {
 }
 
 func (b *Blacklist) Order() int   { return 4 }
-func (b *Blacklist) Name() string { return "Blacklist — Bans manuales" }
+func (b *Blacklist) Name() string { return i18n.T("blacklist.name") }
 
 // Reset borra la blacklist persistida (bans manuales).
 func (b *Blacklist) Reset() {
 	for _, path := range []string{infra.Blacklist4File, infra.Blacklist6File} {
 		if err := os.Remove(path); err == nil {
-			fmt.Printf("  Eliminado: %s\n", path)
+			fmt.Printf(i18n.T("blacklist.reset.removed_file_fmt"), path)
 		} else if os.IsNotExist(err) {
-			fmt.Printf("  No había %s.\n", path)
+			fmt.Printf(i18n.T("blacklist.reset.not_found_fmt"), path)
 		} else {
-			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+			fmt.Printf(i18n.T("blacklist.reset.warn_remove_fmt"), path, err)
 		}
 	}
 }
 
 func (b *Blacklist) Menu() {
 	for {
-		fmt.Println("\n  ┌─ Blacklist — Bans manuales ────────────┐")
-		fmt.Println("  │  [1] Agregar IP/CIDR al ban            │")
-		fmt.Println("  │  [2] Listar IPs baneadas               │")
-		fmt.Println("  │  [3] Eliminar IP/CIDR del ban          │")
-		fmt.Println("  │  [4] Vaciar blacklist completa          │")
-		fmt.Println("  │  [0] Volver                             │")
-		fmt.Println("  └────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println(i18n.T("blacklist.menu.header"))
+		fmt.Println(i18n.T("blacklist.menu.add"))
+		fmt.Println(i18n.T("blacklist.menu.list"))
+		fmt.Println(i18n.T("blacklist.menu.del"))
+		fmt.Println(i18n.T("blacklist.menu.flush"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("fw.menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !b.scanner.Scan() {
 			return
@@ -69,34 +70,34 @@ func (b *Blacklist) Menu() {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
 
 func (b *Blacklist) addIP() {
-	fmt.Print("\n  IP o CIDR a banear (ej: 1.2.3.4 o 10.0.0.0/8): ")
+	fmt.Print(i18n.T("blacklist.add.prompt"))
 	if !b.scanner.Scan() {
 		return
 	}
 	entry := strings.TrimSpace(b.scanner.Text())
 	if entry == "" {
-		fmt.Println("  Entrada vacía. Cancelado.")
+		fmt.Println(i18n.T("blacklist.add.empty_cancelled"))
 		return
 	}
 	setName, confFile, err := resolveSet(entry)
 	if err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("blacklist.cli.err_generic_fmt"), err)
 		return
 	}
 	if err := nftAddElement(setName, entry); err != nil {
-		fmt.Printf("  ERROR al banear: %v\n", err)
+		fmt.Printf(i18n.T("blacklist.cli.err_nft_ban_fmt"), err)
 		return
 	}
 	if err := appendToFile(confFile, entry); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("blacklist.cli.warn_persist_fmt"), confFile, err)
 	}
-	fmt.Printf("  Baneado %s → %s\n", entry, setName)
+	fmt.Printf(i18n.T("blacklist.add.banned_fmt"), entry, setName)
 }
 
 // parseSetElementsFromNft extrae cada IP/CIDR del output de `nft list set`.
@@ -104,6 +105,7 @@ func (b *Blacklist) addIP() {
 //   - "elements = { ip1, ip2, ... }"   (en una sola linea)
 //   - "elements = " seguido de "{ ip1, ip2 }" en la siguiente linea
 //   - "elements={ip1,ip2}"            (sin espacios)
+//
 // Reuso la logica de firewall/parseSetElements via copia pequena (este
 // paquete no debe depender de firewall para evitar ciclo).
 func parseSetElementsFromNft(rawOutput string) []string {
@@ -186,76 +188,75 @@ func (b *Blacklist) listIPs() {
 	for _, setName := range []string{infra.SetBlacklist4, infra.SetBlacklist6} {
 		out, err := exec.Command("nft", "list", "set", "inet", "sm", setName).CombinedOutput()
 		if err != nil {
-			fmt.Printf("  [%s] No disponible (¿tabla inet sm cargada?): %s\n",
-				setName, strings.TrimSpace(string(out)))
+			fmt.Printf(i18n.T("blacklist.list.unavailable_fmt"), setName, strings.TrimSpace(string(out)))
 			continue
 		}
 		elements := parseSetElementsFromNft(string(out))
 		if len(elements) == 0 {
-			fmt.Printf("  [%-20s] (vacio)\n", setName)
+			fmt.Printf("  [%-20s] %s\n", setName, i18n.T("blacklist.list.empty"))
 			continue
 		}
-		fmt.Printf("\n  [%s] %d entradas:\n", setName, len(elements))
-		fmt.Printf("  %-22s %s\n", "IP/CIDR", "Pais")
-		fmt.Println("  " + strings.Repeat("─", 40))
+		fmt.Printf(i18n.T("blacklist.list.header_fmt"), setName, len(elements))
+		fmt.Printf("  %-22s %s\n", i18n.T("blacklist.list.col_ip"), i18n.T("blacklist.list.col_country"))
+		fmt.Println(i18n.T("blacklist.list.separator"))
 		for _, ip := range elements {
 			pais := lookupCountry(ip)
 			if pais == "" {
-				pais = "?"
+				pais = i18n.T("blacklist.list.country_unknown")
 			}
-			fmt.Printf("  %-22s %s\n", ip, pais)
+			fmt.Printf(i18n.T("blacklist.list.row_fmt"), ip, pais)
 		}
 		b.logger.Technical(strings.TrimSpace(string(out)))
 	}
 }
 
 func (b *Blacklist) deleteIP() {
-	fmt.Print("\n  IP o CIDR a eliminar del ban: ")
+	fmt.Print(i18n.T("blacklist.del.prompt"))
 	if !b.scanner.Scan() {
 		return
 	}
 	entry := strings.TrimSpace(b.scanner.Text())
 	if entry == "" {
-		fmt.Println("  Entrada vacía. Cancelado.")
+		fmt.Println(i18n.T("blacklist.add.empty_cancelled"))
 		return
 	}
 	setName, confFile, err := resolveSet(entry)
 	if err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("blacklist.cli.err_generic_fmt"), err)
 		return
 	}
-	fmt.Printf("  Eliminar %s de %s. ¿Confirmar? [s/N]: ", entry, setName)
+	fmt.Printf(i18n.T("blacklist.del.confirm_fmt"), entry, setName)
 	if !b.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(b.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println(i18n.T("blacklist.del.cancelled"))
 		return
 	}
 	if err := nftDeleteElement(setName, entry); err != nil {
-		fmt.Printf("  ERROR al eliminar: %v\n", err)
+		fmt.Printf(i18n.T("blacklist.cli.err_nft_del_fmt"), err)
 		return
 	}
 	if err := removeFromFile(confFile, entry); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("blacklist.cli.warn_persist_update_fmt"), confFile, err)
 	}
-	fmt.Printf("  Eliminado %s de %s\n", entry, setName)
+	fmt.Printf(i18n.T("blacklist.del.removed_fmt"), entry, setName)
 }
 
 func (b *Blacklist) flushAll() {
-	fmt.Print("\n  ¿Vaciar TODA la blacklist (sm_blacklist4 y sm_blacklist6)? [s/N]: ")
+	fmt.Print(i18n.T("blacklist.flush.confirm"))
 	if !b.scanner.Scan() {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(b.scanner.Text())) != "s" {
-		fmt.Println("  Cancelado.")
+		fmt.Println(i18n.T("blacklist.flush.cancelled"))
 		return
 	}
 	errored := false
 	for _, setName := range []string{infra.SetBlacklist4, infra.SetBlacklist6} {
 		out, err := exec.Command("nft", "flush", "set", "inet", "sm", setName).CombinedOutput()
 		if err != nil {
-			fmt.Printf("  ERROR flush %s: %s\n", setName, strings.TrimSpace(string(out)))
+			fmt.Printf(i18n.T("blacklist.cli.err_flush_fmt"), setName, strings.TrimSpace(string(out)))
 			errored = true
 		}
 	}
@@ -264,10 +265,10 @@ func (b *Blacklist) flushAll() {
 	}
 	for _, path := range []string{infra.Blacklist4File, infra.Blacklist6File} {
 		if err := os.WriteFile(path, []byte{}, 0o640); err != nil {
-			fmt.Printf("  ADVERTENCIA: no se pudo truncar %s: %v\n", path, err)
+			fmt.Printf(i18n.T("blacklist.cli.warn_truncate_fmt"), path, err)
 		}
 	}
-	fmt.Println("  Blacklist vaciada (sets nftables + archivos de config).")
+	fmt.Println(i18n.T("blacklist.flush.done"))
 }
 
 // resolveSet clasifica entry como IPv4 o IPv6 y retorna el set y archivo de blacklist correspondiente.
@@ -354,23 +355,23 @@ func (b *Blacklist) RunAction(action string, args ...string) bool {
 	switch strings.ToLower(action) {
 	case "add", "agregar":
 		if len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "  Uso: blacklist add <ip|CIDR>")
+			fmt.Fprintln(os.Stderr, i18n.T("blacklist.cli.usage_add"))
 			return false
 		}
 		entry := args[0]
 		setName, confFile, err := resolveSet(entry)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.err_generic_fmt"), err)
 			return false
 		}
 		if err := nftAddElement(setName, entry); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR al banear: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.err_nft_ban_fmt"), err)
 			return false
 		}
 		if err := appendToFile(confFile, entry); err != nil {
-			fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+			fmt.Printf(i18n.T("blacklist.cli.warn_persist_fmt"), confFile, err)
 		}
-		fmt.Printf("  Baneado %s → %s\n", entry, setName)
+		fmt.Printf(i18n.T("blacklist.add.banned_fmt"), entry, setName)
 		return true
 
 	case "list", "listar":
@@ -379,44 +380,44 @@ func (b *Blacklist) RunAction(action string, args ...string) bool {
 
 	case "del", "delete", "eliminar":
 		if len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "  Uso: blacklist del <ip|CIDR>")
+			fmt.Fprintln(os.Stderr, i18n.T("blacklist.cli.usage_del"))
 			return false
 		}
 		entry := args[0]
 		setName, confFile, err := resolveSet(entry)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.err_generic_fmt"), err)
 			return false
 		}
 		if err := nftDeleteElement(setName, entry); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR al eliminar: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.err_nft_del_fmt"), err)
 			return false
 		}
 		if err := removeFromFile(confFile, entry); err != nil {
-			fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+			fmt.Printf(i18n.T("blacklist.cli.warn_persist_update_fmt"), confFile, err)
 		}
-		fmt.Printf("  Eliminado %s de %s\n", entry, setName)
+		fmt.Printf(i18n.T("blacklist.del.removed_fmt"), entry, setName)
 		return true
 
 	case "flush", "vaciar":
 		for _, setName := range []string{infra.SetBlacklist4, infra.SetBlacklist6} {
 			out, err := exec.Command("nft", "flush", "set", "inet", "sm", setName).CombinedOutput()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  ERROR flush %s: %s\n", setName, strings.TrimSpace(string(out)))
+				fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.err_flush_fmt"), setName, strings.TrimSpace(string(out)))
 				return false
 			}
 		}
 		for _, path := range []string{infra.Blacklist4File, infra.Blacklist6File} {
 			if err := os.WriteFile(path, []byte{}, 0o640); err != nil {
-				fmt.Printf("  ADVERTENCIA: no se pudo truncar %s: %v\n", path, err)
+				fmt.Printf(i18n.T("blacklist.cli.warn_truncate_fmt"), path, err)
 			}
 		}
-		fmt.Println("  Blacklist vaciada.")
+		fmt.Println(i18n.T("blacklist.cli.flush_done"))
 		return true
 
 	default:
-		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
-		fmt.Fprintln(os.Stderr, "  Acciones: add <ip>, list, del <ip>, flush")
+		fmt.Fprintf(os.Stderr, i18n.T("blacklist.cli.unknown_action_fmt"), action)
+		fmt.Fprintln(os.Stderr, i18n.T("blacklist.cli.available_actions"))
 		return false
 	}
 }
