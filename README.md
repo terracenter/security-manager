@@ -214,17 +214,20 @@ instalador aborta solo si falla, no depende de que el usuario la revise a mano.
 
 **Fingerprint de la llave de firma:** `6D33CBB56A4FA1E2966C40225923730155062949`
 
-**Instalación en un solo comando** (descarga, verifica GPG + checksum, e instala):
+**Instalación en un solo comando** (descarga, verifica SHA256, e instala):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/script-dev/install.sh | bash
 ```
 
 **Importante:** ejecuta esto como usuario normal, **nunca** con `sudo` por delante del comando —
 el script se auto-aborta si detecta que corre como root directo (exige usuario normal + `sudo`
 interno). El propio script te pedirá tu password de `sudo` justo en el momento de copiar el
-binario a `/usr/local/sbin/` — es esperado, respóndelo normalmente. Esto requiere una terminal
-interactiva real (no funciona en CI/automatización sin tty conectada).
+binario a `/usr/local/sbin/security-manager-ng-dev` — es esperado, respóndelo normalmente.
+
+> ⚠️ **Esto es la rama `dev` (pre-release).** El script imprime un banner grande de advertencia
+> identificable: `!!! ATENCION: INSTALADOR DE DESARROLLO (rama: dev) !!!`. Si NO ves ese banner,
+> el script no es el correcto. Para producción, usa el instalador de `main` con GPG.
 
 <details>
 <summary>Instalación manual (auditoría paso a paso, para quien prefiera revisar cada verificación)</summary>

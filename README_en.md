@@ -226,17 +226,20 @@ aborts on its own if it fails; it doesn't depend on the user reviewing it by han
 
 **Release signing key fingerprint:** `6D33CBB56A4FA1E2966C40225923730155062949`
 
-**One-command install** (downloads, verifies GPG + checksum, and installs):
+**One-command install** (downloads, verifies SHA256, and installs):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager-ng/dev/script-dev/install.sh | bash
 ```
 
 **Important:** run this as a normal user, **never** with `sudo` in front of the command — the
 script aborts on its own if it detects it's running as root directly (it requires a normal user +
 internal `sudo`). The script will prompt for your `sudo` password right at the moment it copies
-the binary to `/usr/local/sbin/` — that's expected, just answer it. This requires a real
-interactive terminal (it won't work in CI/automation without a connected tty).
+the binary to `/usr/local/sbin/security-manager-ng-dev` — that's expected, just answer it.
+
+> ⚠️ **This is the `dev` branch (pre-release).** The script prints a large banner:
+> `!!! ATENCION: INSTALADOR DE DESARROLLO (rama: dev) !!!`. If you do NOT see that banner,
+> the script is wrong. For production, use the `main` installer with GPG.
 
 <details>
 <summary>Manual installation (step-by-step audit, for anyone who prefers to review each verification)</summary>
