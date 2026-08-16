@@ -9,7 +9,7 @@
 # el tag v0.8.0-dev.N a origin. workflow: .github/workflows/dev-release.yml.
 #
 # Uso:
-#   curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/dev/script-dev/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager/dev/script-dev/install.sh | bash
 #
 # Que hace:
 #   1. Banner grande: imprime "ESTO ES DEV — puede tener BUGs" en stderr/color.
@@ -27,7 +27,7 @@
 
 set -e
 
-REPO="terracenter/Security-Manager-Ng"
+REPO="terracenter/security-manager"
 BINARY="security-manager-ng"
 DEST="/usr/local/sbin/${BINARY}-dev"
 
@@ -48,7 +48,7 @@ cat >&2 <<'EOF'
   GPG es exclusiva de los tags v* de produccion en main).
 
   Si queres la version estable, usa:
-    curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
+    curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
 
   Uso esperado: hosts de prueba, desarrollo, experimentacion.
 ================================================================
