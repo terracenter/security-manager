@@ -8,8 +8,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules"
 	"github.com/terracenter/security-manager-ng/internal/modules/blacklist"
+	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 	"github.com/terracenter/security-manager-ng/internal/modules/firewall"
 	"github.com/terracenter/security-manager-ng/internal/modules/geoip"
 	"github.com/terracenter/security-manager-ng/internal/modules/hardroot"
@@ -62,6 +64,7 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 		blacklist.New(logger),
 		hardroot.New(logger),
 		ssh.New(),
+		crowdsec.New(logger),
 		// Tarea 12: fail2ban fue removido en favor de crowdsec.
 		// crowdsec ya tiene su modulo (`internal/modules/crowdsec`).
 	}
@@ -74,29 +77,29 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 func printMenu(mods []modules.Module) {
 	st := collectStatus()
 	fmt.Println("\n╔══════════════════════════════════════╗")
-	fmt.Println("║       Security Manager NG            ║")
+	fmt.Println("║       " + i18n.T("menu.title") + "            ║")
 	fmt.Println("╚══════════════════════════════════════╝")
-	fmt.Printf("  Versión: %s\n", Version)
-	fmt.Printf("  Repositorio: %s\n", RepoURL)
-	fmt.Printf("  Usuario activo: %s\n", sys.CurrentUser())
+	fmt.Printf("  "+i18n.T("menu.version")+": %s\n", Version)
+	fmt.Printf("  "+i18n.T("menu.repo")+": %s\n", RepoURL)
+	fmt.Printf("  "+i18n.T("menu.user")+": %s\n", sys.CurrentUser())
 
-	smStr := "✗ inactivo"
+	smStr := "✗ " + i18n.T("menu.status.firewall.inactive")
 	if st.smActive {
-		smStr = "✓ activo"
+		smStr = "✓ " + i18n.T("menu.status.firewall.active")
 	}
 	geoStr := "—"
 	if len(st.geoCountries) > 0 {
 		geoStr = strings.Join(st.geoCountries, " ")
 	}
-	fmt.Printf("  Firewall: %s  |  SSH: :%d  |  GeoIP: %s  |  WL: %d  |  BL: %d\n\n",
+	fmt.Printf("  "+i18n.T("menu.status.firewall.label")+": %s  |  "+i18n.T("menu.status.ssh")+": :%d  |  "+i18n.T("menu.status.geoip")+": %s  |  "+i18n.T("menu.status.wl")+": %d  |  "+i18n.T("menu.status.bl")+": %d\n\n",
 		smStr, st.sshPort, geoStr, st.wlCount, st.blCount)
 
 	for i, m := range mods {
 		fmt.Printf("  [%d] %s\n", i+1, m.Name())
 	}
-	fmt.Println("  [R] Reset Global — borra TODA la configuración de todos los módulos")
-	fmt.Println("  [0] Salir")
-	fmt.Print("\n  Selección: ")
+	fmt.Println("  [R] " + i18n.T("menu.option.reset"))
+	fmt.Println("  [0] " + i18n.T("menu.option.exit"))
+	fmt.Print("\n  " + i18n.T("menu.prompt.select") + ": ")
 }
 
 func ensureNftablesEnabled(logger *sys.SMLogger) {
@@ -107,9 +110,9 @@ func ensureNftablesEnabled(logger *sys.SMLogger) {
 	if strings.TrimSpace(string(out)) == "enabled" {
 		return
 	}
-	fmt.Println("  [init] Habilitando nftables.service para arranque automático...")
+	fmt.Println("  [init] " + i18n.T("init.nftables.enabling") + "...")
 	if out, err := exec.Command("systemctl", "enable", "nftables").CombinedOutput(); err != nil {
-		logger.Warn(fmt.Sprintf("No se pudo habilitar nftables.service para arranque automático: %v", err))
+		logger.Warn(fmt.Sprintf("%s: %v", i18n.T("init.nftables.warn"), err))
 		logger.Technical(strings.TrimSpace(string(out)))
 	}
 }
@@ -118,14 +121,14 @@ func ensureNftablesEnabled(logger *sys.SMLogger) {
 // deje configuración huérfana. Delega en Reset() de cada módulo (mismo orden que el
 // menú, por Order()) en vez de duplicar lógica de borrado de archivos aquí.
 func resetGlobal(scanner *bufio.Scanner, mods []modules.Module) {
-	fmt.Println("\n  ⚠️  RESET GLOBAL — esto eliminará TODO lo gestionado por Security Manager NG:")
-	fmt.Println("      • Tabla nftables inet sm + ruleset/backup/opciones/puertos (" + infra.ConfDir + ")")
-	fmt.Println("      • Whitelist / Immune (Tier A/B) + allowlist de crowdsec")
-	fmt.Println("      • GeoIP (países permitidos + zone files)")
-	fmt.Println("      • Blacklist (bans manuales)")
-	fmt.Println("      • Sudoers hardening (/etc/sudoers.d/sm-ng)")
-	fmt.Println("      • SSH hardening (/etc/ssh/sshd_config.d/10-sshd-base.conf) — reinicia sshd")
-	fmt.Println("\n  Esta es una operación de UN SOLO NIVEL: no hay reset parcial. Todo lo anterior se borra.")
+	fmt.Println("\n  ⚠️  " + i18n.T("reset.banner") + ":")
+	fmt.Println("      • " + i18n.T("reset.item.ruleset") + " (" + infra.ConfDir + ")")
+	fmt.Println("      • " + i18n.T("reset.item.wl"))
+	fmt.Println("      • " + i18n.T("reset.item.geoip"))
+	fmt.Println("      • " + i18n.T("reset.item.bl"))
+	fmt.Println("      • " + i18n.T("reset.item.sudoers"))
+	fmt.Println("      • " + i18n.T("reset.item.ssh"))
+	fmt.Println("\n  " + i18n.T("reset.warning.single_level"))
 	readLine := func(prompt string) string {
 		fmt.Print(prompt)
 		if !scanner.Scan() {
@@ -133,24 +136,24 @@ func resetGlobal(scanner *bufio.Scanner, mods []modules.Module) {
 		}
 		return scanner.Text()
 	}
-	if !sys.ConfirmStrong(readLine, "\n  Escribe 'reset' para confirmar: ", "reset") {
-		fmt.Println("  Operación cancelada.")
+	if !sys.ConfirmStrong(readLine, "\n  "+i18n.T("reset.confirm.prompt")+": ", "reset") {
+		fmt.Println("  " + i18n.T("reset.confirm.cancelled"))
 		return
 	}
 
 	for _, m := range mods {
-		fmt.Printf("\n  [reset] %s...\n", m.Name())
+		fmt.Printf("\n  [%s] %s...\n", i18n.T("reset.module.prefix"), m.Name())
 		m.Reset()
 	}
 
-	fmt.Println("\n  ✓ Reset Global completado. El host está limpio de Security Manager NG.")
+	fmt.Println("\n  ✓ " + i18n.T("reset.done"))
 }
 
 // handleCLI enruta argumentos CLI al módulo correspondiente.
 // Retorna 0 en éxito, 1 en error.
 func handleCLI(args []string, logger *sys.SMLogger) int {
 	if len(args) > 0 && (args[0] == "--version" || args[0] == "-v") {
-		fmt.Printf("Security Manager NG %s\n%s\n", Version, RepoURL)
+		fmt.Printf("%s %s\n%s\n", i18n.T("cli.version.line"), Version, RepoURL)
 		return 0
 	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
@@ -194,19 +197,19 @@ func handleCLI(args []string, logger *sys.SMLogger) int {
 	}
 
 	if matched == nil {
-		fmt.Fprintf(os.Stderr, "  Módulo '%s' no encontrado.\n", args[0])
-		fmt.Fprintf(os.Stderr, "  Módulos disponibles: firewall, whitelist, geoip, blacklist, hardroot, ssh, crowdsec\n")
+		fmt.Fprintf(os.Stderr, "  %s '%s'.\n", i18n.T("cli.module.not_found"), args[0])
+		fmt.Fprintf(os.Stderr, "  %s: firewall, whitelist, geoip, blacklist, hardroot, ssh, crowdsec\n", i18n.T("cli.module.available"))
 		return 1
 	}
 
 	cli, ok := matched.(modules.CLIModule)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "  El módulo '%s' no soporta CLI aún. Usa el menú interactivo.\n", matched.Name())
+		fmt.Fprintf(os.Stderr, "  %s '%s'.\n", i18n.T("cli.module.no_cli"), matched.Name())
 		return 1
 	}
 
 	if len(args) < 2 {
-		fmt.Fprintf(os.Stderr, "  Falta acción. Uso: security-manager-ng %s <acción> [flags]\n", args[0])
+		fmt.Fprintf(os.Stderr, "  %s: security-manager-ng %s <acción> [flags]\n", i18n.T("cli.missing.action"), args[0])
 		return 1
 	}
 
@@ -217,60 +220,65 @@ func handleCLI(args []string, logger *sys.SMLogger) int {
 }
 
 func printCLIHelp() {
-	fmt.Println("Security Manager NG — CLI")
+	fmt.Println(i18n.T("cli.version.line") + " — CLI")
 	fmt.Println()
-	fmt.Println("Uso: security-manager-ng <módulo> <acción> [flags]")
+	fmt.Println(i18n.T("cli.usage") + ": security-manager-ng <módulo> <acción> [flags]")
 	fmt.Println()
-	fmt.Println("  firewall")
-	fmt.Println("    allow      --port N --proto tcp|udp [--comment C]   Abre puerto globalmente (bypass GeoIP)")
-	fmt.Println("    deny       --port N --proto tcp|udp                  Cierra puerto previamente abierto")
-	fmt.Println("    list-ports                                            Lista puertos en allowed_ports.conf")
-	fmt.Println("    estado                                                Estado de la tabla inet sm")
-	fmt.Println("    apply                                                 Aplica / recarga ruleset base")
-	fmt.Println("    reset                                                 Elimina tabla inet sm")
-	fmt.Println("    port80     on|off                                     Puerto 80 global (ACME/Let's Encrypt)")
+	fmt.Println("  " + i18n.T("cli.cmd.firewall"))
+	fmt.Println("    allow      --port N --proto tcp|udp [--comment C]   " + i18n.T("cli.cmd.firewall.allow"))
+	fmt.Println("    deny       --port N --proto tcp|udp                  " + i18n.T("cli.cmd.firewall.deny"))
+	fmt.Println("    list-ports                                            " + i18n.T("cli.cmd.firewall.list_ports"))
+	fmt.Println("    estado                                                " + i18n.T("cli.cmd.firewall.status"))
+	fmt.Println("    apply                                                 " + i18n.T("cli.cmd.firewall.apply"))
+	fmt.Println("    reset                                                 " + i18n.T("cli.cmd.firewall.reset"))
+	fmt.Println("    port80     on|off                                     " + i18n.T("cli.cmd.firewall.port80"))
 	fmt.Println()
-	fmt.Println("  whitelist")
-	fmt.Println("    add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]")
-	fmt.Println("    add-self  --tier A|B                                  Agregar IP de sesión SSH activa")
-	fmt.Println("    list      [--tier A|B]                                Listar entradas (A=confiables, B=intocables)")
-	fmt.Println("    del  <ip> --tier A|B                                  Eliminar entrada")
-	fmt.Println("    sync                                                  Sincronizar Tier B → crowdsec allowlist")
+	fmt.Println("  " + i18n.T("cli.cmd.whitelist"))
+	fmt.Println("    add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]   " + i18n.T("cli.cmd.whitelist.add"))
+	fmt.Println("    add-self  --tier A|B                                  " + i18n.T("cli.cmd.whitelist.add_self"))
+	fmt.Println("    list      [--tier A|B]                                " + i18n.T("cli.cmd.whitelist.list"))
+	fmt.Println("    del  <ip> --tier A|B                                  " + i18n.T("cli.cmd.whitelist.del"))
+	fmt.Println("    sync                                                  " + i18n.T("cli.cmd.whitelist.sync"))
 	fmt.Println()
-	fmt.Println("  geoip")
-	fmt.Println("    add <CC...>                                           Agregar países permitidos (ej: VE CO PE)")
-	fmt.Println("    del <CC>                                              Eliminar país de la lista")
-	fmt.Println("    list                                                  Ver países configurados")
-	fmt.Println("    update                                                Descargar rangos desde ipdeny.com")
-	fmt.Println("    apply                                                 Aplicar / recargar ruleset GeoIP")
-	fmt.Println("    reset                                                 Borrar lista de países y zone files")
-	fmt.Println("    preview                                               Vista previa del ruleset sm.nft")
+	fmt.Println("  " + i18n.T("cli.cmd.geoip"))
+	fmt.Println("    add <CC...>                                           " + i18n.T("cli.cmd.geoip.add"))
+	fmt.Println("    del <CC>                                              " + i18n.T("cli.cmd.geoip.del"))
+	fmt.Println("    list                                                  " + i18n.T("cli.cmd.geoip.list"))
+	fmt.Println("    update                                                " + i18n.T("cli.cmd.geoip.update"))
+	fmt.Println("    apply                                                 " + i18n.T("cli.cmd.geoip.apply"))
+	fmt.Println("    reset                                                 " + i18n.T("cli.cmd.geoip.reset"))
+	fmt.Println("    preview                                               " + i18n.T("cli.cmd.geoip.preview"))
 	fmt.Println()
-	fmt.Println("  blacklist")
-	fmt.Println("    add <ip|CIDR>                                         Banear IP o red")
-	fmt.Println("    list                                                  Listar IPs baneadas")
-	fmt.Println("    del <ip|CIDR>                                         Eliminar del ban")
-	fmt.Println("    flush                                                 Vaciar blacklist completa")
+	fmt.Println("  " + i18n.T("cli.cmd.blacklist"))
+	fmt.Println("    add <ip|CIDR>                                         " + i18n.T("cli.cmd.blacklist.add"))
+	fmt.Println("    list                                                  " + i18n.T("cli.cmd.blacklist.list"))
+	fmt.Println("    del <ip|CIDR>                                         " + i18n.T("cli.cmd.blacklist.del"))
+	fmt.Println("    flush                                                 " + i18n.T("cli.cmd.blacklist.flush"))
 	fmt.Println()
-	fmt.Println("  hardroot")
-	fmt.Println("    estado                                                Ver estado root/SSH/sudoers")
-	fmt.Println("    harden-ssh                                            PermitRootLogin no + PermitEmptyPasswords no")
-	fmt.Println("    lock-root                                             Bloquear cuenta root (passwd -l)")
-	fmt.Println("    sudoers                                               Crear /etc/sudoers.d/sm-ng")
+	fmt.Println("  " + i18n.T("cli.cmd.hardroot"))
+	fmt.Println("    estado                                                " + i18n.T("cli.cmd.hardroot.status"))
+	fmt.Println("    harden-ssh                                            " + i18n.T("cli.cmd.hardroot.harden_ssh"))
+	fmt.Println("    lock-root                                             " + i18n.T("cli.cmd.hardroot.lock_root"))
+	fmt.Println("    sudoers                                               " + i18n.T("cli.cmd.hardroot.sudoers"))
 	fmt.Println()
-	fmt.Println("  ssh")
-	fmt.Println("    estado                                                Ver estado SSH hardening")
-	fmt.Println("    apply  [--groups G] [--auth 1|2|3] [--tunnel]        Aplicar 10-sshd-base.conf")
-	fmt.Println("             --auth 1 = solo llave pública (recomendado)")
-	fmt.Println("             --auth 2 = llave O contraseña")
-	fmt.Println("             --auth 3 = llave Y contraseña (MFA)")
-	fmt.Println("    banners                                               Escribir /etc/issue.net y /etc/issue")
-	fmt.Println("    validar                                               Validar config activa (sshd -T)")
+	fmt.Println("  " + i18n.T("cli.cmd.ssh"))
+	fmt.Println("    estado                                                " + i18n.T("cli.cmd.ssh.status"))
+	fmt.Println("    apply  [--groups G] [--auth 1|2|3] [--tunnel]        " + i18n.T("cli.cmd.ssh.apply"))
+	fmt.Println("             --auth 1 = " + i18n.T("cli.cmd.ssh.apply.auth1"))
+	fmt.Println("             --auth 2 = " + i18n.T("cli.cmd.ssh.apply.auth2"))
+	fmt.Println("             --auth 3 = " + i18n.T("cli.cmd.ssh.apply.auth3"))
+	fmt.Println("    banners                                               " + i18n.T("cli.cmd.ssh.banners"))
+	fmt.Println("    validar                                               " + i18n.T("cli.cmd.ssh.validate"))
 	fmt.Println()
-	fmt.Println("Sin argumentos: inicia el menú interactivo.")
+	fmt.Println(i18n.T("cli.no_args.help"))
 }
 
 func main() {
+	if err := i18n.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "i18n load failed: %v\n", err)
+		os.Exit(1)
+	}
+
 	logger := sys.NewLogger()
 	defer logger.Close()
 
@@ -288,7 +296,7 @@ func main() {
 		input := strings.TrimSpace(scanner.Text())
 
 		if input == "0" {
-			fmt.Println("\n  Saliendo. Hasta luego.")
+			fmt.Println("\n  " + i18n.T("menu.exit.goodbye"))
 			break
 		}
 
@@ -299,11 +307,11 @@ func main() {
 
 		var sel int
 		if _, err := fmt.Sscanf(input, "%d", &sel); err != nil {
-			fmt.Println("  Opción inválida.")
+			fmt.Println("  " + i18n.T("menu.invalid.option"))
 			continue
 		}
 		if sel < 1 || sel > len(mods) {
-			fmt.Println("  Opción fuera de rango.")
+			fmt.Println("  " + i18n.T("menu.invalid.range"))
 			continue
 		}
 		mods[sel-1].Menu()

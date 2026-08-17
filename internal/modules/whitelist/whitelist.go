@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/sys"
@@ -31,11 +32,9 @@ func (w *Whitelist) Name() string { return "Whitelist / SSoT (Confiables / Intoc
 func (w *Whitelist) Reset() {
 	for _, path := range []string{infra.Whitelist4File, infra.Whitelist6File, infra.Immune4File, infra.Immune6File} {
 		if err := os.Remove(path); err == nil {
-			fmt.Printf("  Eliminado: %s\n", path)
-		} else if os.IsNotExist(err) {
-			fmt.Printf("  No había %s.\n", path)
-		} else {
-			fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", path, err)
+			fmt.Printf(i18n.T("geoip.reset.removed_file")+" %s\n", path)
+		} else if !os.IsNotExist(err) {
+			fmt.Printf(i18n.T("geoip.reset.warn_remove")+" %s: %v\n", path, err)
 		}
 	}
 	// Tarea 12: ya no escribimos a /etc/fail2ban/jail.d/ ni recargamos fail2ban-client.
@@ -55,8 +54,8 @@ type tier struct {
 
 func tierA() tier {
 	return tier{
-		label:  "Confiables (Tier A — vigiladas por crowdsec)",
-		set4:   infra.SetWhitelist4, set6: infra.SetWhitelist6,
+		label: "Confiables (Tier A — vigiladas por crowdsec)",
+		set4:  infra.SetWhitelist4, set6: infra.SetWhitelist6,
 		file4: infra.Whitelist4File, file6: infra.Whitelist6File,
 		immune: false,
 	}
@@ -64,8 +63,8 @@ func tierA() tier {
 
 func tierB() tier {
 	return tier{
-		label:  "Intocables (Tier B — crowdsec never-bans)",
-		set4:   infra.SetImmune4, set6: infra.SetImmune6,
+		label: "Intocables (Tier B — crowdsec never-bans)",
+		set4:  infra.SetImmune4, set6: infra.SetImmune6,
 		file4: infra.Immune4File, file6: infra.Immune6File,
 		immune: true,
 	}
@@ -73,13 +72,13 @@ func tierB() tier {
 
 func (w *Whitelist) Menu() {
 	for {
-		fmt.Println("\n  ┌─ Whitelist / SSoT ─────────────────────────────┐")
-		fmt.Println("  │  [1] Confiables (Tier A) — crowdsec SÍ vigila   │")
-		fmt.Println("  │  [2] Intocables (Tier B) — crowdsec JAMÁS banea │")
-		fmt.Println("  │  [3] Sincronizar crowdsec (Tier B → allowlist)   │")
-		fmt.Println("  │  [0] Volver                                     │")
-		fmt.Println("  └─────────────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println(i18n.T("whitelist.menu.header"))
+		fmt.Println(i18n.T("whitelist.menu.tier_a"))
+		fmt.Println(i18n.T("whitelist.menu.tier_b"))
+		fmt.Println(i18n.T("whitelist.menu.sync"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("whitelist.menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !w.scanner.Scan() {
 			return
@@ -94,20 +93,21 @@ func (w *Whitelist) Menu() {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
 
 func (w *Whitelist) tierMenu(t tier) {
 	for {
-		fmt.Printf("\n  ┌─ %s\n", t.label)
-		fmt.Println("  │  [1] Agregar IP/CIDR")
-		fmt.Println("  │  [2] Agregar mi IP (sesión SSH activa)")
-		fmt.Println("  │  [3] Listar")
-		fmt.Println("  │  [4] Eliminar")
-		fmt.Println("  │  [0] Volver")
-		fmt.Print("  Selección: ")
+		fmt.Printf(i18n.T("whitelist.tier_menu.header_fmt")+" %s\n", t.label)
+		fmt.Println(i18n.T("whitelist.tier_menu.add"))
+		fmt.Println(i18n.T("whitelist.tier_menu.add_self"))
+		fmt.Println(i18n.T("whitelist.tier_menu.list"))
+		fmt.Println(i18n.T("whitelist.tier_menu.del"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("whitelist.tier_menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !w.scanner.Scan() {
 			return
@@ -124,7 +124,7 @@ func (w *Whitelist) tierMenu(t tier) {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -140,16 +140,16 @@ func (w *Whitelist) prompt(msg string) string {
 
 // promptMetadata captura los metadatos de auditoría de la entrada.
 func (w *Whitelist) promptMetadata() (responsable, proposito, vencimiento string) {
-	responsable = w.prompt("  Responsable: ")
-	proposito = w.prompt("  Propósito: ")
-	vencimiento = w.prompt("  Vencimiento (YYYY-MM-DD, vacío = permanente): ")
+	responsable = w.prompt(i18n.T("whitelist.add.prompt_responsable") + " ")
+	proposito = w.prompt(i18n.T("whitelist.add.prompt_proposito") + " ")
+	vencimiento = w.prompt(i18n.T("whitelist.add.prompt_vencimiento") + " ")
 	return
 }
 
 func (w *Whitelist) addIP(t tier) {
-	entry := w.prompt("\n  IP o CIDR a agregar (ej: 192.168.1.0/24 o 2001:db8::1): ")
+	entry := w.prompt(i18n.T("whitelist.add.prompt_addr") + " ")
 	if entry == "" {
-		fmt.Println("  Entrada vacía. Cancelado.")
+		fmt.Println(i18n.T("whitelist.add.empty_cancelled"))
 		return
 	}
 	w.persist(t, entry)
@@ -158,24 +158,24 @@ func (w *Whitelist) addIP(t tier) {
 func (w *Whitelist) addSelf(t tier) {
 	ip := sys.GetSSHIP()
 	if ip == "" {
-		fmt.Println("\n  No se detectó sesión SSH activa (SSH_CLIENT vacío y 'w' sin resultados).")
-		fmt.Println("  Usa [1] para agregar tu IP manualmente.")
+		fmt.Println(i18n.T("whitelist.addself.no_ssh"))
+		fmt.Println(i18n.T("whitelist.addself.use_manual"))
 		return
 	}
 	entry := ip
 	// Sugerir CIDR de red si es una IPv4 individual.
 	if cidr := suggestCIDR(ip); cidr != "" {
-		fmt.Printf("\n  IP detectada: %s\n", ip)
-		fmt.Printf("  [1] Solo esta IP (%s/32)\n", ip)
-		fmt.Printf("  [2] Toda la red (%s)\n", cidr)
-		switch w.prompt("  Selección [1]: ") {
+		fmt.Printf("\n  "+i18n.T("whitelist.addself.detected")+" %s\n", ip)
+		fmt.Printf("  [1] "+i18n.T("whitelist.addself.option_single")+" (%s/32)\n", ip)
+		fmt.Printf("  [2] "+i18n.T("whitelist.addself.option_network")+" (%s)\n", cidr)
+		switch w.prompt(i18n.T("whitelist.addself.select") + " ") {
 		case "2":
 			entry = cidr
 		default:
 			// dejar la IP individual tal cual
 		}
 	} else {
-		fmt.Printf("\n  IP detectada: %s\n", ip)
+		fmt.Printf("\n  "+i18n.T("whitelist.addself.detected")+" %s\n", ip)
 	}
 	w.persist(t, entry)
 }
@@ -185,7 +185,7 @@ func (w *Whitelist) addSelf(t tier) {
 func (w *Whitelist) persist(t tier, addr string) {
 	setName, confFile, err := t.resolve(addr)
 	if err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
 	resp, prop, venc := w.promptMetadata()
@@ -197,21 +197,21 @@ func (w *Whitelist) persist(t tier, addr string) {
 		Vencimiento: venc,
 	}
 	if err := nftAddElement(setName, addr); err != nil {
-		fmt.Printf("  ERROR al agregar al set nft: %v\n", err)
-		fmt.Println("  (¿Aplicaste el ruleset base con el set actualizado? Firewall [1])")
+		fmt.Printf(i18n.T("whitelist.persist.err_nft_add")+" %v\n", err)
+		fmt.Println(i18n.T("whitelist.persist.err_nft_hint"))
 		return
 	}
 	if err := appendEntry(confFile, e); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("whitelist.persist.warn_persist")+" %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Agregado %s → %s\n", addr, setName)
+	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
 		SyncImmuneTier()
 	}
 }
 
 func (w *Whitelist) listIPs(t tier) {
-	fmt.Printf("\n  %s\n", t.label)
+	fmt.Printf(i18n.T("whitelist.list.tier_label")+" %s\n", t.label)
 	total := 0
 	now := time.Now()
 	for _, f := range []string{t.file4, t.file6} {
@@ -219,13 +219,18 @@ func (w *Whitelist) listIPs(t tier) {
 		for _, e := range entries {
 			if total == 0 {
 				fmt.Printf("\n  %-22s %-18s %-24s %-12s %-12s %s\n",
-					"IP/CIDR", "Responsable", "Propósito", "Alta", "Vence", "Estado")
-				fmt.Println("  " + strings.Repeat("─", 108))
+					i18n.T("whitelist.list.col_ip"),
+					i18n.T("whitelist.list.col_responsable"),
+					i18n.T("whitelist.list.col_proposito"),
+					i18n.T("whitelist.list.col_alta"),
+					i18n.T("whitelist.list.col_vence"),
+					i18n.T("whitelist.list.col_estado"))
+				fmt.Println(i18n.T("whitelist.list.separator"))
 			}
 			venc := e.Vencimiento
 			estado := vencimientoStatus(e.Vencimiento, now)
 			if venc == "" {
-				venc = "permanente"
+				venc = i18n.T("whitelist.list.permanente")
 			}
 			fmt.Printf("  %-22s %-18s %-24s %-12s %-12s %s\n",
 				e.Addr, e.Responsable, e.Proposito, e.FechaAlta, venc, estado)
@@ -233,7 +238,7 @@ func (w *Whitelist) listIPs(t tier) {
 		}
 	}
 	if total == 0 {
-		fmt.Println("\n  Sin entradas.")
+		fmt.Println(i18n.T("whitelist.list.empty"))
 	}
 }
 
@@ -241,10 +246,11 @@ func (w *Whitelist) listIPs(t tier) {
 // Retorna un marcador humano para la vista de estado:
 //   - "" (vacio)               -> "permanente"
 //   - fecha invalida           -> "fecha inválida"
-//   - fecha < now              -> "⚠ VENCIDO"
+//   - fecha < now              -> "� VENCIDO"
 //   - diferencia <= 7 dias     -> "⚠ vence pronto"
 //   - diferencia > 7 dias      -> "OK"
 //   - diferencia > 30 dias     -> "OK (>30d)"
+//
 // Funcion pura testeable (recibe now por parametro).
 func vencimientoStatus(vencimiento string, now time.Time) string {
 	if vencimiento == "" {
@@ -268,28 +274,28 @@ func vencimientoStatus(vencimiento string, now time.Time) string {
 }
 
 func (w *Whitelist) deleteIP(t tier) {
-	addr := w.prompt("\n  IP o CIDR a eliminar: ")
+	addr := w.prompt(i18n.T("whitelist.del.prompt_addr") + " ")
 	if addr == "" {
-		fmt.Println("  Entrada vacía. Cancelado.")
+		fmt.Println(i18n.T("whitelist.del.empty_cancelled"))
 		return
 	}
 	setName, confFile, err := t.resolve(addr)
 	if err != nil {
-		fmt.Printf("  ERROR: %v\n", err)
+		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
-	if strings.ToLower(w.prompt(fmt.Sprintf("  Eliminar %s de %s. ¿Confirmar? [s/N]: ", addr, setName))) != "s" {
-		fmt.Println("  Cancelado.")
+	if strings.ToLower(w.prompt(fmt.Sprintf(i18n.T("whitelist.del.confirm")+" ", addr, setName))) != "s" {
+		fmt.Println(i18n.T("whitelist.del.cancelled"))
 		return
 	}
 	if err := nftDeleteElement(setName, addr); err != nil {
-		fmt.Printf("  ERROR al eliminar del set nft: %v\n", err)
+		fmt.Printf(i18n.T("whitelist.del.err_nft")+" %v\n", err)
 		return
 	}
 	if err := removeByAddr(confFile, addr); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("whitelist.del.warn_persist")+" %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Eliminado %s de %s\n", addr, setName)
+	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
 		SyncImmuneTier()
 	}
@@ -408,24 +414,24 @@ func SyncImmuneTier() error {
 	immuneFiles := []string{infra.Immune4File, infra.Immune6File}
 
 	if crowdsec.IsInstalled() {
-		fmt.Println("  Sincronizando IMMUNE tier a CrowdSec...")
+		fmt.Println(i18n.T("whitelist.sync.syncing"))
 		if err := crowdsec.SyncAllowlist(immuneFiles); err != nil {
-			fmt.Printf("  ⚠  Error sincronizando CrowdSec: %v\n", err)
+			fmt.Printf(i18n.T("whitelist.sync.err_sync")+" %v\n", err)
 			// No retornar error bloqueante
 		} else {
-			fmt.Println("  ✓  IMMUNE tier sincronizado a CrowdSec.")
+			fmt.Println(i18n.T("whitelist.sync.success"))
 		}
 		// FIX P2.1: limpiar IPs obsoletas del allowlist de CrowdSec.
 		// Sin esto, el allowlist acumula entradas para siempre.
 		if err := crowdsec.RemoveFromAllowlist(immuneFiles); err != nil {
-			fmt.Printf("  ⚠  Error limpiando allowlist CrowdSec: %v\n", err)
+			fmt.Printf(i18n.T("whitelist.sync.err_clean")+" %v\n", err)
 		}
 		return nil
 	}
 
 	// Si CrowdSec no esta instalado, log de advertencia. No bloqueante.
-	fmt.Println("  ⚠  CrowdSec no esta instalado. IMMUNE tier no sincronizado a CrowdSec.")
-	fmt.Println("     Tarea 12: el fallback a fail2ban fue removido. Instale CrowdSec para sincronizar IPs intocables.")
+	fmt.Println(i18n.T("whitelist.sync.crowdsec_missing"))
+	fmt.Println(i18n.T("whitelist.sync.crowdsec_hint"))
 	return nil
 }
 
@@ -455,15 +461,15 @@ func (w *Whitelist) RunAction(action string, args ...string) bool {
 		SyncImmuneTier()
 		return true
 	default:
-		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
-		fmt.Fprintln(os.Stderr, "  Acciones: add <ip> --tier A|B [...], add-self --tier A|B, list [--tier A|B], del <ip> --tier A|B, sync")
+		fmt.Fprintf(os.Stderr, i18n.T("whitelist.cli.unknown_action")+" %s\n", action)
+		fmt.Fprintln(os.Stderr, i18n.T("whitelist.cli.available_actions"))
 		return false
 	}
 }
 
 func (w *Whitelist) cliAdd(args []string) bool {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "  Uso: whitelist add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]")
+		fmt.Fprintln(os.Stderr, i18n.T("whitelist.cli.usage_add"))
 		return false
 	}
 	addr := args[0]
@@ -481,7 +487,7 @@ func (w *Whitelist) cliAdd(args []string) bool {
 	}
 	setName, confFile, err := t.resolve(addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 		return false
 	}
 	e := infra.ACLEntry{
@@ -492,13 +498,13 @@ func (w *Whitelist) cliAdd(args []string) bool {
 		Vencimiento: *vencimiento,
 	}
 	if err := nftAddElement(setName, addr); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR al agregar al set nft: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("whitelist.persist.err_nft_add")+" %v\n", err)
 		return false
 	}
 	if err := appendEntry(confFile, e); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo persistir en %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("whitelist.persist.warn_persist")+" %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Agregado %s → %s\n", addr, setName)
+	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
 		SyncImmuneTier()
 	}
@@ -516,10 +522,10 @@ func (w *Whitelist) cliAddSelf(args []string) bool {
 	}
 	ip := sys.GetSSHIP()
 	if ip == "" {
-		fmt.Fprintln(os.Stderr, "  No se detectó sesión SSH activa. Usa 'add <ip> --tier ...' manualmente.")
+		fmt.Fprintln(os.Stderr, i18n.T("whitelist.cli.no_ssh"))
 		return false
 	}
-	fmt.Printf("  IP detectada: %s\n", ip)
+	fmt.Printf(i18n.T("whitelist.addself.detected")+" %s\n", ip)
 	return w.cliAdd(append([]string{ip}, "--tier", *tierFlag))
 }
 
@@ -538,7 +544,7 @@ func (w *Whitelist) cliList(args []string) bool {
 		w.listIPs(tierA())
 		w.listIPs(tierB())
 	default:
-		fmt.Fprintf(os.Stderr, "  ERROR: --tier debe ser A o B, no '%s'.\n", *tierFlag)
+		fmt.Fprintf(os.Stderr, i18n.T("whitelist.cli.err_tier")+" %s\n", *tierFlag)
 		return false
 	}
 	return true
@@ -546,7 +552,7 @@ func (w *Whitelist) cliList(args []string) bool {
 
 func (w *Whitelist) cliDel(args []string) bool {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "  Uso: whitelist del <ip> --tier A|B")
+		fmt.Fprintln(os.Stderr, i18n.T("whitelist.cli.usage_del"))
 		return false
 	}
 	addr := args[0]
@@ -561,17 +567,17 @@ func (w *Whitelist) cliDel(args []string) bool {
 	}
 	setName, confFile, err := t.resolve(addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 		return false
 	}
 	if err := nftDeleteElement(setName, addr); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR al eliminar del set nft: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("whitelist.del.err_nft")+" %v\n", err)
 		return false
 	}
 	if err := removeByAddr(confFile, addr); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo actualizar %s: %v\n", confFile, err)
+		fmt.Printf(i18n.T("whitelist.del.warn_persist")+" %s: %v\n", confFile, err)
 	}
-	fmt.Printf("  Eliminado %s de %s\n", addr, setName)
+	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
 		SyncImmuneTier()
 	}
@@ -585,7 +591,7 @@ func (w *Whitelist) parseTier(s string) (tier, bool) {
 	case "B":
 		return tierB(), true
 	default:
-		fmt.Fprintln(os.Stderr, "  ERROR: --tier es obligatorio y debe ser A o B.")
+		fmt.Fprintln(os.Stderr, i18n.T("whitelist.cli.err_tier_required"))
 		return tier{}, false
 	}
 }

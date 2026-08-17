@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 )
 
 const (
@@ -129,14 +131,14 @@ func (s *SSH) Name() string { return "SSH — hardening sshd_config" }
 
 func (s *SSH) Menu() {
 	for {
-		fmt.Println("\n  ┌─ SSH — Hardening sshd_config ─────────┐")
-		fmt.Println("  │  [1] Ver estado actual                 │")
-		fmt.Println("  │  [2] Aplicar configuración base        │")
-		fmt.Println("  │  [3] Aplicar banners (/etc/issue.net)  │")
-		fmt.Println("  │  [4] Validar configuración activa      │")
-		fmt.Println("  │  [0] Volver                            │")
-		fmt.Println("  └────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println(i18n.T("ssh.menu.header"))
+		fmt.Println(i18n.T("ssh.menu.estado"))
+		fmt.Println(i18n.T("ssh.menu.apply"))
+		fmt.Println(i18n.T("ssh.menu.banners"))
+		fmt.Println(i18n.T("ssh.menu.validar"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("ssh.menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !s.scanner.Scan() {
 			return
@@ -163,7 +165,7 @@ func (s *SSH) Menu() {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -172,7 +174,7 @@ func (s *SSH) Reset() {
 	removed := false
 	for _, f := range []string{baseConf} {
 		if err := os.Remove(f); err == nil {
-			fmt.Printf("  Eliminado: %s\n", f)
+			fmt.Printf(i18n.T("geoip.reset.removed_file")+" ", f)
 			removed = true
 		}
 	}
@@ -180,17 +182,17 @@ func (s *SSH) Reset() {
 		sshdTest()
 		sshdRestart()
 	} else {
-		fmt.Println("  No hay configuración SSH hardening aplicada.")
+		fmt.Println(i18n.T("ssh.reset.not_applied"))
 	}
 }
 
 type sshConfigFile struct {
-	Path     string
-	Size     int64
-	ModTime  string // formato YYYY-MM-DD HH:MM:SS
-	IsOwn    bool   // true si es el archivo generado por SM-NG
-	IsFreeIPA bool  // true si parece override de FreeIPA (nombre contiene "ipa")
-	Exists   bool
+	Path      string
+	Size      int64
+	ModTime   string // formato YYYY-MM-DD HH:MM:SS
+	IsOwn     bool   // true si es el archivo generado por SM-NG
+	IsFreeIPA bool   // true si parece override de FreeIPA (nombre contiene "ipa")
+	Exists    bool
 }
 
 // listConfigFiles lista los archivos en el directorio dado y los clasifica
@@ -234,15 +236,15 @@ func (s *SSH) showStatus() {
 	activo := strings.TrimSpace(string(out))
 	out2, _ := exec.Command("systemctl", "is-enabled", detectSSHService()).Output()
 	habilitado := strings.TrimSpace(string(out2))
-	fmt.Printf("  Servicio SSH:  activo=%-12s habilitado=%s\n", activo, habilitado)
+	fmt.Printf(i18n.T("ssh.status.service_row"), activo, habilitado)
 
 	fmt.Println()
-	fmt.Println("  Archivos de configuración:")
+	fmt.Println(i18n.T("ssh.status.config_files"))
 	// Listar TODOS los archivos en sshd_config.d (no solo el de SM-NG).
 	// Esto permite ver si hay overrides (ej: FreeIPA 99-ipa.conf) sin abrir cada uno.
 	cfgs := listConfigFiles(configDir, baseConf)
 	if len(cfgs) == 0 {
-		fmt.Printf("    ✗ %s (directorio vacío o no existe)\n", configDir)
+		fmt.Printf(i18n.T("ssh.status.dir_missing"), configDir)
 	}
 	for _, c := range cfgs {
 		marker := "  "
@@ -255,17 +257,17 @@ func (s *SSH) showStatus() {
 			note = " (override FreeIPA detectado)"
 		}
 		if !c.Exists {
-			fmt.Printf("    ✗ %s\n", c.Path)
+			fmt.Printf(i18n.T("ssh.status.file_missing"), c.Path)
 			continue
 		}
-		fmt.Printf("    %s%s  (%s, %d bytes)%s\n",
+		fmt.Printf(i18n.T("ssh.status.file_row"),
 			marker, c.Path, c.ModTime, c.Size, note)
 	}
 
 	out, err := exec.Command("sshd", "-T").Output()
 	if err == nil {
 		fmt.Println()
-		fmt.Println("  Directivas activas:")
+		fmt.Println(i18n.T("ssh.status.directives"))
 		claves := []string{
 			"passwordauthentication", "permitrootlogin", "authenticationmethods",
 			"allowgroups", "loglevel", "maxauthtries", "maxsessions", "permittunnel",
@@ -282,17 +284,17 @@ func (s *SSH) showStatus() {
 	}
 
 	fmt.Println()
-	fmt.Println("  Banners:")
+	fmt.Println(i18n.T("ssh.status.banners"))
 	for _, f := range []string{issueNet, issueFile} {
 		if _, err := os.Stat(f); err == nil {
-			fmt.Printf("    ✓ %s\n", f)
+			fmt.Printf(i18n.T("ssh.status.ok")+" ", f)
 		} else {
-			fmt.Printf("    ✗ %s\n", f)
+			fmt.Printf(i18n.T("ssh.status.file_missing"), f)
 		}
 	}
 
 	fmt.Println()
-	fmt.Println("  Puerto escuchando:")
+	fmt.Println(i18n.T("ssh.status.listening_port"))
 	out, _ = exec.Command("ss", "-lnpt").Output()
 	found := false
 	for _, line := range strings.Split(string(out), "\n") {
@@ -302,7 +304,7 @@ func (s *SSH) showStatus() {
 		}
 	}
 	if !found {
-		fmt.Println("    (sin listener en :22)")
+		fmt.Println(i18n.T("ssh.status.no_listener"))
 	}
 }
 
@@ -317,7 +319,7 @@ func (s *SSH) preflight(opts sshBaseOpts) bool {
 
 	outID, err := exec.Command("id", "-Gn", user).Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ⚠ preflight: no se pudo consultar grupos de '%s': %v\n", user, err)
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.preflight.warn_groups"), user, err)
 		return false
 	}
 	userGroups := strings.Fields(string(outID))
@@ -334,11 +336,11 @@ func (s *SSH) preflight(opts sshBaseOpts) bool {
 		}
 	}
 	if !inAny {
-		fmt.Fprintf(os.Stderr, "  ✗ preflight AllowGroups: '%s' no pertenece a ningún grupo en '%s'\n", user, opts.AllowGroups)
-		fmt.Fprintln(os.Stderr, "    Aplicar esta configuración bloquearía el acceso SSH.")
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.preflight.not_in_groups"), user, opts.AllowGroups)
+		fmt.Fprintln(os.Stderr, i18n.T("ssh.preflight.block_warning"))
 		return false
 	}
-	fmt.Printf("  ✓ preflight AllowGroups: usuario '%s' en grupos permitidos\n", user)
+	fmt.Printf(i18n.T("ssh.preflight.ok_groups"), user)
 
 	if opts.PasswordAuth == "no" {
 		homeDir := ""
@@ -353,9 +355,9 @@ func (s *SSH) preflight(opts sshBaseOpts) bool {
 		authKeys := filepath.Join(homeDir, ".ssh", "authorized_keys")
 		data, err3 := os.ReadFile(authKeys)
 		if err3 != nil || len(strings.TrimSpace(string(data))) == 0 {
-			fmt.Fprintf(os.Stderr, "  ⚠ preflight llave: %s ausente o vacío — con AuthMethods 'publickey' podrías perder acceso\n", authKeys)
+			fmt.Fprintf(os.Stderr, i18n.T("ssh.preflight.warn_key"), authKeys)
 		} else {
-			fmt.Printf("  ✓ preflight llave: %s presente\n", authKeys)
+			fmt.Printf(i18n.T("ssh.preflight.ok_key"), authKeys)
 		}
 	}
 
@@ -376,11 +378,11 @@ func (s *SSH) applyBase(opts sshBaseOpts) {
 		tunnelDesc = "sí"
 	}
 
-	fmt.Printf("\nAplicando 10-sshd-base.conf (AllowGroups: %s | Auth: %s | Tunnel: %s)...\n",
+	fmt.Printf(i18n.T("ssh.apply.header"),
 		opts.AllowGroups, authDesc, tunnelDesc)
 
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR creando %s: %v\n", configDir, err)
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.apply.err_create_dir"), configDir, err)
 		return
 	}
 
@@ -390,10 +392,10 @@ func (s *SSH) applyBase(opts sshBaseOpts) {
 			strings.Contains(existStr, "AuthenticationMethods "+opts.AuthMethods+"\n") &&
 			strings.Contains(existStr, "PermitTunnel "+opts.PermitTunnel+"\n") &&
 			strings.Contains(existStr, "PasswordAuthentication "+opts.PasswordAuth+"\n") {
-			fmt.Println("  10-sshd-base.conf ya está aplicado con esa configuración.")
+			fmt.Println(i18n.T("ssh.apply.already_applied"))
 			return
 		}
-		fmt.Println("  Actualizando 10-sshd-base.conf...")
+		fmt.Println(i18n.T("ssh.apply.updating"))
 	}
 
 	if !s.preflight(opts) {
@@ -403,29 +405,29 @@ func (s *SSH) applyBase(opts sshBaseOpts) {
 	backupFile := baseConf + ".bak"
 	if _, err := os.Stat(baseConf); err == nil {
 		if err := os.Rename(baseConf, backupFile); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: no se pudo hacer backup en %s: %v\n", backupFile, err)
+			fmt.Fprintf(os.Stderr, i18n.T("ssh.apply.err_backup"), backupFile, err)
 			return
 		}
-		fmt.Printf("  Backup: %s → %s\n", baseConf, backupFile)
+		fmt.Printf(i18n.T("ssh.apply.backup"), baseConf, backupFile)
 	}
 
 	content := fmt.Sprintf(baseConfTemplate, opts.PasswordAuth, opts.AuthMethods, opts.AllowGroups, opts.PermitTunnel)
 	if err := os.WriteFile(baseConf, []byte(content), 0o640); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR escribiendo %s: %v\n", baseConf, err)
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.apply.err_write"), baseConf, err)
 		if _, err := os.Stat(backupFile); err == nil {
 			os.Rename(backupFile, baseConf)
-			fmt.Println("  Restaurado backup.")
+			fmt.Println(i18n.T("ssh.apply.restored"))
 		}
 		return
 	}
-	fmt.Printf("  Escrito: %s\n", baseConf)
+	fmt.Printf(i18n.T("ssh.apply.written"), baseConf)
 
 	if !sshdTest() {
-		fmt.Fprintf(os.Stderr, "  ERROR: sshd -t falló — revirtiendo cambios\n")
+		fmt.Fprint(os.Stderr, i18n.T("ssh.apply.err_sshd_test"))
 		if err := os.Remove(baseConf); err == nil {
 			if _, err := os.Stat(backupFile); err == nil {
 				os.Rename(backupFile, baseConf)
-				fmt.Println("  Restaurado backup.")
+				fmt.Println(i18n.T("ssh.apply.restored"))
 			}
 		}
 		return
@@ -443,20 +445,20 @@ func (s *SSH) applyBanners() {
 		{issueFile, issueContent},
 	} {
 		if err := os.WriteFile(entry.path, []byte(entry.content), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "  ERROR: %v\n", err)
+			fmt.Fprintf(os.Stderr, i18n.T("ssh.banners.err"), err)
 		} else {
-			fmt.Printf("  Escrito: %s\n", entry.path)
+			fmt.Printf(i18n.T("ssh.apply.written"), entry.path)
 		}
 	}
 }
 
 func (s *SSH) validate() {
-	fmt.Println("\n=== Validación SSH Hardening ===")
+	fmt.Println(i18n.T("ssh.validar.title"))
 
-	fmt.Println("\n  Configuración activa (sshd -T):")
+	fmt.Println(i18n.T("ssh.validar.active_config"))
 	out, err := exec.Command("sshd", "-T").Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR ejecutando sshd -T: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.validar.err_sshd_t"), err)
 	} else {
 		claves := []string{
 			"passwordauthentication", "permitrootlogin", "authenticationmethods",
@@ -475,7 +477,7 @@ func (s *SSH) validate() {
 		}
 	}
 
-	fmt.Println("\n  Puerto escuchando:")
+	fmt.Println(i18n.T("ssh.validar.port"))
 	out, _ = exec.Command("ss", "-lnpt").Output()
 	found := false
 	for _, line := range strings.Split(string(out), "\n") {
@@ -485,14 +487,14 @@ func (s *SSH) validate() {
 		}
 	}
 	if !found {
-		fmt.Println("    (ningún listener en :22)")
+		fmt.Println(i18n.T("ssh.validar.no_listener"))
 	}
 
-	fmt.Println("\n  Últimas autenticaciones aceptadas:")
+	fmt.Println(i18n.T("ssh.validar.last_auth"))
 	out, _ = exec.Command("journalctl", "-u", detectSSHService(), "-n", "5", "--no-pager", "--grep", "Accepted").Output()
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || lines[0] == "" {
-		fmt.Println("    (sin registros recientes)")
+		fmt.Println(i18n.T("ssh.validar.no_records"))
 	} else {
 		for _, l := range lines {
 			if strings.TrimSpace(l) != "" {
@@ -513,41 +515,41 @@ func detectSSHService() string {
 }
 
 func sshdTest() bool {
-	fmt.Print("  Verificando sintaxis (sshd -t)... ")
+	fmt.Print(i18n.T("ssh.check.syntax"))
 	cmd := exec.Command("sshd", "-t")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Println("ERROR")
+		fmt.Println(i18n.T("ssh.check.failed"))
 		return false
 	}
-	fmt.Println("OK")
+	fmt.Println(i18n.T("ssh.check.ok"))
 	return true
 }
 
 func sshdRestart() bool {
-	fmt.Print("  Reiniciando sshd... ")
+	fmt.Print(i18n.T("ssh.check.restart"))
 	cmd := exec.Command("systemctl", "restart", detectSSHService())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Println("ERROR")
+		fmt.Println(i18n.T("ssh.check.failed"))
 		return false
 	}
-	fmt.Println("OK")
+	fmt.Println(i18n.T("ssh.check.ok"))
 	return true
 }
 
 func sshdReload() bool {
-	fmt.Print("  Recargando sshd... ")
+	fmt.Print(i18n.T("ssh.check.reload"))
 	cmd := exec.Command("systemctl", "reload", detectSSHService())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Println("ERROR")
+		fmt.Println(i18n.T("ssh.check.failed"))
 		return false
 	}
-	fmt.Println("OK")
+	fmt.Println(i18n.T("ssh.check.ok"))
 	return true
 }
 
@@ -561,13 +563,13 @@ func (s *SSH) readLine(prompt string) string {
 
 func (s *SSH) askAuthMethod() (string, string) {
 	fmt.Println()
-	fmt.Println("  Modo de autenticación:")
-	fmt.Println("    1. Solo llave pública          (AuthenticationMethods publickey)           [recomendado]")
-	fmt.Println("       → contraseña rechazada incluso con PasswordAuthentication=yes.")
-	fmt.Println("    2. Llave pública O contraseña  (AuthenticationMethods publickey password)")
-	fmt.Println("       → cualquiera es suficiente; para admins sin llave SSH configurada aún.")
-	fmt.Println("    3. Llave pública Y contraseña  (AuthenticationMethods publickey,password)  [MFA]")
-	fmt.Println("       → ambas obligatorias; para FreeIPA cuando la llave puede fallar por web.")
+	fmt.Println(i18n.T("ssh.wizard.auth_mode"))
+	fmt.Println(i18n.T("ssh.wizard.auth1"))
+	fmt.Println(i18n.T("ssh.wizard.auth1_detail"))
+	fmt.Println(i18n.T("ssh.wizard.auth2"))
+	fmt.Println(i18n.T("ssh.wizard.auth2_detail"))
+	fmt.Println(i18n.T("ssh.wizard.auth3"))
+	fmt.Println(i18n.T("ssh.wizard.auth3_detail"))
 	val := s.readLine("  Modo [1]: ")
 	switch val {
 	case "2":
@@ -581,8 +583,8 @@ func (s *SSH) askAuthMethod() (string, string) {
 
 func (s *SSH) askPermitTunnel() string {
 	fmt.Println()
-	fmt.Println("  PermitTunnel: permite túneles TUN/TAP via SSH (útil sin VPN activa).")
-	fmt.Println("  Deshabilitar en producción salvo necesidad explícita.")
+	fmt.Println(i18n.T("ssh.wizard.tunnel_desc"))
+	fmt.Println(i18n.T("ssh.wizard.tunnel_disable_hint"))
 	val := s.readLine("  ¿Habilitar PermitTunnel? [s/N]: ")
 	if strings.ToLower(val) == "s" {
 		return "yes"
@@ -606,7 +608,7 @@ func (s *SSH) askAllowGroups() string {
 
 	fmt.Println()
 	if len(relevantes) > 0 {
-		fmt.Printf("  Grupos disponibles relevantes: %s\n", strings.Join(relevantes, ", "))
+		fmt.Printf(i18n.T("ssh.wizard.available_groups"), strings.Join(relevantes, ", "))
 	}
 
 	user := os.Getenv("SUDO_USER")
@@ -616,12 +618,12 @@ func (s *SSH) askAllowGroups() string {
 	if user == "" {
 		user = "root"
 	}
-	fmt.Printf("  Usuario actual: %s\n", user)
-	fmt.Println("  ADVERTENCIA: solo usuarios en AllowGroups podrán autenticarse.")
+	fmt.Printf(i18n.T("ssh.wizard.current_user"), user)
+	fmt.Println(i18n.T("ssh.wizard.allowgroups_warning"))
 
 	val := s.readLine("  AllowGroups [sudo] (q=cancelar, Enter=predeterminado): ")
 	if strings.ToLower(val) == "q" {
-		fmt.Println("  Cancelado")
+		fmt.Println(i18n.T("ssh.wizard.cancelled"))
 		return ""
 	}
 	if val == "" {
@@ -650,8 +652,8 @@ func (s *SSH) RunAction(action string, args ...string) bool {
 		s.validate()
 		return true
 	default:
-		fmt.Fprintf(os.Stderr, "  Acción '%s' no reconocida.\n", action)
-		fmt.Fprintln(os.Stderr, "  Acciones: estado, apply [--groups G] [--auth 1|2|3] [--tunnel], banners, validar")
+		fmt.Fprintf(os.Stderr, i18n.T("ssh.cli.unknown_action"), action)
+		fmt.Fprintln(os.Stderr, i18n.T("ssh.cli.available_actions"))
 		return false
 	}
 }

@@ -5,6 +5,7 @@ go 1.24.4
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
+	pgregory.net/rapid v1.3.0
 )
 
 require (

@@ -166,19 +166,19 @@ func TestGenerateRulesetBaseRulesHaveComment(t *testing.T) {
 
 	// Stages 1-9 del template principal. Cada regla tiene un slug "sm-*".
 	mustHaveComment := []string{
-		`comment "sm-fastpath"`,                   // Stage 1: conntrack
-		`comment "sm-invalid-drop"`,               // Stage 3: conntrack invalid
-		`comment "sm-antirecon-xmas"`,             // Stage 4: antirecon
+		`comment "sm-fastpath"`,       // Stage 1: conntrack
+		`comment "sm-invalid-drop"`,   // Stage 3: conntrack invalid
+		`comment "sm-antirecon-xmas"`, // Stage 4: antirecon
 		`comment "sm-antirecon-null"`,
 		`comment "sm-antirecon-finsyn"`,
 		`comment "sm-antirecon-synrst"`,
-		`comment "sm-blacklist4"`,                 // Stage 5: blacklist
-		`comment "sm-whitelist4"`,                 // Stage 6: whitelist/immune
+		`comment "sm-blacklist4"`, // Stage 5: blacklist
+		`comment "sm-whitelist4"`, // Stage 6: whitelist/immune
 		`comment "sm-whitelist6"`,
 		`comment "sm-immune4"`,
 		`comment "sm-immune6"`,
-		`comment "sm-https-global"`,               // Stage 8: HTTPS
-		`comment "sm-default-drop"`,               // Stage 9: default DROP
+		`comment "sm-https-global"`, // Stage 8: HTTPS
+		`comment "sm-default-drop"`, // Stage 9: default DROP
 	}
 	for _, want := range mustHaveComment {
 		if !strings.Contains(rs, want) {
@@ -219,17 +219,85 @@ func TestGenerateRulesetIncludesSmNatTable(t *testing.T) {
 	}
 }
 
-// FIX P13 (Tarea 13): verifica que chain `forward` AUN NO se genera.
-// El refactor completo a text/template con chain forward se posterga
-// para una sesion dedicada (porque requiere coordinacion con tests).
-func TestGenerateRuleset_DoesNotIncludeForwardYet(t *testing.T) {
+// FIX P13 (Tarea 13, parte 2/3): verifica que GenerateRuleset ahora incluye
+// la tabla sm_forward con chain forward stateful (clase 044 del curso Udemy
+// + diseno MikroTik-style: una tabla por dominio funcional).
+//
+// La chain forward filtra trafico EN TRANSITO entre interfaces (no destinado
+// al host). Es complementaria a `input` (tabla inet sm, trafico al host) y
+// a `sm_nat` (tabla inet sm_nat, NAT). Default policy drop (clase 028).
+func TestGenerateRuleset_IncludesForwardChain(t *testing.T) {
 	geoip := GeoIPData{Countries: []CountrySet{
 		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
 	}}
 	rs := GenerateRuleset(22, true, geoip, true)
 
-	if strings.Contains(rs, "chain forward {") {
-		t.Error("chain forward YA se genera, pero deberia postergarse para sesion dedicada (Tarea 13 partes 2-3)")
+	mustContain := []string{
+		"table inet sm_forward {",
+		"chain forward {",
+		"type filter hook forward priority filter; policy drop;",
+		`ct state established,related accept comment "sm-fwd-fastpath"`,
+		`ct state invalid drop comment "sm-fwd-invalid-drop"`,
+		`comment "sm-fwd-antirecon-xmas"`,
+		`comment "sm-fwd-antirecon-null"`,
+		`comment "sm-fwd-antirecon-finsyn"`,
+		`comment "sm-fwd-antirecon-synrst"`,
+		`comment "sm-fwd-whitelist4"`,
+		`comment "sm-fwd-immune4"`,
+		`comment "sm-fwd-blacklist4"`,
+		`comment "sm-fwd-geoallow4"`,
+		`comment "sm-fwd-default-drop"`,
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(rs, want) {
+			t.Errorf("ruleset NO contiene %q (chain forward)", want)
+		}
+	}
+
+	// Orden: tabla sm_forward debe ir DESPUES de sm_nat (sm_nat ya estaba
+	// antes que sm_forward en el orden de concatenacion).
+	posSM := strings.Index(rs, "table inet sm {")
+	posSMNat := strings.Index(rs, "table inet sm_nat {")
+	posSMFwd := strings.Index(rs, "table inet sm_forward {")
+	if posSM < 0 || posSMNat < 0 || posSMFwd < 0 {
+		t.Fatal("no se encontro alguna de las 3 tablas esperadas")
+	}
+	if !(posSM < posSMNat) {
+		t.Errorf("tabla inet sm debe ir ANTES de sm_nat: sm=%d sm_nat=%d", posSM, posSMNat)
+	}
+	if !(posSMNat < posSMFwd) {
+		t.Errorf("tabla inet sm_nat debe ir ANTES de sm_forward: sm_nat=%d sm_forward=%d", posSMNat, posSMFwd)
+	}
+}
+
+// TestGenerateRulesetForwardChain_NoServices verifica que chain forward NO
+// contiene reglas de servicios destinados al host (SSH/80/443). Esos
+// servicios son para `input`, no para trafico en transito entre interfaces.
+// El operador agrega reglas de forward especificas via `nft add rule` o
+// wizard futuro.
+func TestGenerateRulesetForwardChain_NoServices(t *testing.T) {
+	geoip := GeoIPData{Countries: []CountrySet{
+		{CC: "VE", Ranges4: []string{"190.0.0.0/8"}},
+	}}
+	rs := GenerateRuleset(22, true, geoip, true)
+
+	// Extraer el bloque de chain forward para inspeccionarlo aislado.
+	fwdStart := strings.Index(rs, "chain forward {")
+	fwdEnd := strings.Index(rs[fwdStart:], "\n}")
+	if fwdStart < 0 || fwdEnd < 0 {
+		t.Fatal("no se encontro chain forward { o su cierre")
+	}
+	fwdBlock := rs[fwdStart : fwdStart+fwdEnd]
+
+	mustNotContain := []string{
+		"tcp dport 22",  // SSH — servicio del host, no de transito
+		"tcp dport 80",  // HTTP — idem
+		"tcp dport 443", // HTTPS — idem
+	}
+	for _, bad := range mustNotContain {
+		if strings.Contains(fwdBlock, bad) {
+			t.Errorf("chain forward contiene %q (no debe: forward es para transito, no para servicios del host)", bad)
+		}
 	}
 }
 

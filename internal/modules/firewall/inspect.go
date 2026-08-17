@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 )
 
 // PatternDetected es el resultado de detectar un patron de firewall en el ruleset.
@@ -24,11 +26,11 @@ type PatternDetected struct {
 // Incluye el output basico de `parseNftStatus()` (chains/sets) MAS los patrones
 // detectados (que es lo que el checkpoint 2026-07-27 llamaba "inspect profundo").
 type InspectResult struct {
-	TableActive    bool             // true si la tabla `inet sm` existe
+	TableActive    bool // true si la tabla `inet sm` existe
 	Chains         map[string]chainInfo
 	Sets           map[string][]string
 	Patterns       []PatternDetected
-	Recommendation string           // texto humano: que el operador deberia hacer
+	Recommendation string // texto humano: que el operador deberia hacer
 }
 
 // Inspect ejecuta `nft list table inet sm`, parsea el resultado, y detecta
@@ -81,7 +83,7 @@ func newPatternDetector(raw string) *patternDetector {
 // detect corre todas las detecciones. Cada una agrega un PatternDetected
 // a la lista con su evidencia.
 func (d *patternDetector) detect() {
-	d.detectChainForward()    // chain forward existe?
+	d.detectChainForward()     // chain forward existe?
 	d.detectChainPostrouting() // NAT en postrouting?
 	d.detectChainPrerouting()  // NAT en prerouting (dNAT)?
 	d.detectStateful()         // ct state established,related accept?
@@ -304,7 +306,7 @@ func collapseLineContinuations(s string) string {
 			for i < len(s) && (s[i] == ' ' || s[i] == '	') {
 				i++
 			}
-			b.WriteByte(' ')  // reemplazar "\\<newline>" por un espacio.
+			b.WriteByte(' ') // reemplazar "\\<newline>" por un espacio.
 			continue
 		}
 		b.WriteByte(s[i])
@@ -393,13 +395,13 @@ func (d *patternDetector) setEvidence(setPrefix string) []string {
 // buildRecommendation genera una recomendacion humana segun los patrones detectados.
 func buildRecommendation(patterns []PatternDetected, chains map[string]chainInfo, sets map[string][]string) string {
 	if len(patterns) == 0 {
-		return "No se detectaron patrones especificos. El ruleset parece ser un baseline generico. Considerar agregar whitelist/immune/blacklist segun el caso de uso."
+		return i18n.T("inspect.recommendation.no_patterns")
 	}
 
 	var rec strings.Builder
-	rec.WriteString("Patrones detectados:\n")
+	rec.WriteString(i18n.T("inspect.recommendation.header"))
 	for _, p := range patterns {
-		rec.WriteString(fmt.Sprintf("  - %s (confianza %d%%): %s\n", p.Name, p.Confidence, p.Description))
+		rec.WriteString(fmt.Sprintf(i18n.T("inspect.recommendation.item"), p.Name, p.Confidence, p.Description))
 	}
 
 	// Recomendaciones especificas.
@@ -414,16 +416,16 @@ func buildRecommendation(patterns []PatternDetected, chains map[string]chainInfo
 		}
 	}
 
-	rec.WriteString("\nRecomendaciones:\n")
+	rec.WriteString(i18n.T("inspect.recommendation.rec_header"))
 	if !hasForward {
-		rec.WriteString("  - El host es ENDPOINT (no hace forward). Si queres que haga routing, agregar chain forward (ver ROADMAP P3).\n")
+		rec.WriteString(i18n.T("inspect.recommendation.endpoint"))
 	}
 	if hasNAT {
-		rec.WriteString("  - NAT activo. Verificar que la tabla sm_nat (o prerouting/postrouting de inet sm) tiene las reglas correctas.\n")
+		rec.WriteString(i18n.T("inspect.recommendation.nat"))
 	}
 	_, hasInputChain := chains["input"]
 	if !hasInputChain {
-		rec.WriteString("  - NO se detecto chain input. El ruleset esta vacio o solo tiene forward.\n")
+		rec.WriteString(i18n.T("inspect.recommendation.no_input"))
 	}
 
 	return rec.String()
@@ -439,11 +441,11 @@ func (f *Firewall) inspectCLI() {
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "No such file or directory") || strings.Contains(errMsg, "no such table") {
-			fmt.Println("  ✗ Firewall: INACTIVO — Ninguna regla de seguridad está activa en este servidor.")
-			fmt.Println("     → Usa [1] Aplicar / recargar ruleset base para activarlo.")
+			fmt.Println(i18n.T("fw.status.firewall_inactive"))
+			fmt.Println(i18n.T("fw.status.firewall_inactive_hint"))
 		} else {
-			fmt.Println("  ✗ nftables no está instalado — el firewall no puede funcionar.")
-			fmt.Println("     → Ejecuta: sudo apt install nftables")
+			fmt.Println(i18n.T("fw.status.nftables_missing"))
+			fmt.Println(i18n.T("fw.status.nftables_install_hint"))
 		}
 		if f.logger != nil {
 			f.logger.Technical(errMsg)
@@ -452,34 +454,33 @@ func (f *Firewall) inspectCLI() {
 	}
 
 	fmt.Println()
-	fmt.Println("  ✓ Firewall: ACTIVO")
-	fmt.Println()
+	fmt.Print(i18n.T("fw.status.active"))
 
 	if len(result.Chains) > 0 {
-		fmt.Println("  Cadenas:")
+		fmt.Println(i18n.T("fw.status.chains_header"))
 		for name, info := range result.Chains {
-			fmt.Printf("    %-12s policy:%-8s — %d reglas\n", name, info.policy, info.ruleCount)
+			fmt.Printf(i18n.T("fw.status.chain_row"), name, info.policy, info.ruleCount)
 		}
 		fmt.Println()
 	}
 
 	if len(result.Sets) > 0 {
-		fmt.Println("  Sets:")
+		fmt.Println(i18n.T("fw.status.sets_header"))
 		for name, elements := range result.Sets {
 			if len(elements) == 0 {
-				fmt.Printf("    %-20s (vacío)\n", name)
+				fmt.Printf(i18n.T("fw.status.set_empty"), name)
 			} else {
-				fmt.Printf("    %-20s %d entradas\n", name, len(elements))
+				fmt.Printf(i18n.T("fw.status.set_with_count"), name, len(elements))
 			}
 		}
 		fmt.Println()
 	}
 
 	if len(result.Patterns) > 0 {
-		fmt.Println("  Patrones detectados:")
+		fmt.Println(i18n.T("inspect.patterns_header"))
 		for _, p := range result.Patterns {
 			conf := strconv.Itoa(p.Confidence)
-			fmt.Printf("    [%s%%] %s — %s\n", conf, p.Name, p.Description)
+			fmt.Printf(i18n.T("inspect.pattern_row"), conf, p.Name, p.Description)
 		}
 		fmt.Println()
 	}
@@ -488,7 +489,7 @@ func (f *Firewall) inspectCLI() {
 		fmt.Println("  " + strings.ReplaceAll(result.Recommendation, "\n", "\n  "))
 	}
 
-	fmt.Println("  Detalles técnicos → /var/log/security-manager-ng.log")
+	fmt.Println(i18n.T("fw.status.technical_log"))
 	if f.logger != nil {
 		f.logger.Technical(strings.Join(collectEvidenceHelper(result.Patterns), "\n"))
 	}

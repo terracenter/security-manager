@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 )
 
 // CheckAndInstallPrereqs verifica que los paquetes obligatorios están instalados.
@@ -37,7 +39,7 @@ func CheckAndInstallPrereqs(readLine func(string) string) error {
 	if distroDisplay == "" {
 		distroDisplay = distro.ID
 	}
-	fmt.Printf("\n  Se necesitan instalar los siguientes paquetes en %s:\n", distroDisplay)
+	fmt.Printf("\n  %s %s:\n", i18n.T("prereqs.install.needed"), distroDisplay)
 	for _, pkg := range missingPkgs {
 		fmt.Printf("    - %s\n", pkg)
 	}
@@ -64,27 +66,27 @@ func CheckAndInstallCrowdSec(readLine func(string) string) error {
 	}
 
 	// CrowdSec no está instalado — informar pero no bloquear
-	fmt.Println("  [info] CrowdSec no instalado — integración avanzada no disponible.")
-	fmt.Print("  ¿Instalar CrowdSec ahora? [s/N]: ")
+	fmt.Println("  [info] " + i18n.T("prereqs.crowdsec.not_installed"))
+	fmt.Print("  " + i18n.T("prereqs.crowdsec.install_prompt") + " ")
 	response := readLine("")
 	if !strings.EqualFold(strings.TrimSpace(response), "s") {
 		return nil // Usuario rechazó, no es error
 	}
 
 	// Usuario aceptó instalar CrowdSec
-	fmt.Println("Registrando repositorio oficial CrowdSec (Packagecloud)...")
+	fmt.Println(i18n.T("prereqs.crowdsec.registering_repo"))
 	if err := registerCrowdSecRepo(distro.Family); err != nil {
-		fmt.Printf("  Advertencia: no se pudo registrar repo CrowdSec: %v\n", err)
+		fmt.Printf("  "+i18n.T("prereqs.warn.repo_register_failed")+": %v\n", err)
 		return nil // No bloquear aunque falle el repo
 	}
 
 	if !OfferInstall(readLine, missingPkgs...) {
-		fmt.Println("  [info] CrowdSec no instalado — operando en modo nftables puro.")
+		fmt.Println("  [info] " + i18n.T("prereqs.crowdsec.nftables_only"))
 		return nil
 	}
 
 	if err := configureCrowdSecPostInstall(distro.Family); err != nil {
-		fmt.Printf("  Advertencia: error configurando CrowdSec post-install: %v\n", err)
+		fmt.Printf("  "+i18n.T("prereqs.warn.post_install_failed")+": %v\n", err)
 	}
 
 	return nil
@@ -132,18 +134,18 @@ func registerCrowdSecRepo(family string) error {
 // - Configura el bouncer para usar tabla inet sm (set-only: true)
 func configureCrowdSecPostInstall(family string) error {
 	// Deshabilitar CAPI (modo offline)
-	fmt.Println("Deshabilitando CAPI (modo offline local)...")
+	fmt.Println(i18n.T("prereqs.crowdsec.disabling_capi"))
 	configPath := "/etc/crowdsec/config.yaml"
 	if err := disableCAPIInConfig(configPath); err != nil {
 		// No retornar error bloqueante, solo log warning
-		fmt.Printf("Advertencia: no se pudo deshabilitar CAPI automáticamente: %v\n", err)
+		fmt.Printf(i18n.T("prereqs.warn.capi_disable_failed")+": %v\n", err)
 	}
 
 	// Configurar bouncer para usar tabla inet sm
-	fmt.Println("Configurando bouncer CrowdSec para usar tabla inet sm...")
+	fmt.Println(i18n.T("prereqs.crowdsec.configuring_bouncer"))
 	bouncerPath := "/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml"
 	if err := configureBounceForSmTable(bouncerPath); err != nil {
-		fmt.Printf("Advertencia: no se pudo configurar bouncer automáticamente: %v\n", err)
+		fmt.Printf(i18n.T("prereqs.warn.bouncer_config_failed")+": %v\n", err)
 	}
 
 	return nil

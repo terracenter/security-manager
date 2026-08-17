@@ -7,11 +7,17 @@
 // posicionales, etc.), el refactor NO se aplica todavia.
 //
 // LO QUE SI se hace en este archivo (conservador, sin tocar la API):
-// - Definir el template principal como constante reutilizable.
-// - Definir la nueva tabla `sm_nat` para NAT (sNAT en postrouting,
-//   dNAT en prerouting) que se CONCATENA al final del ruleset.
-// - Mantener compat 100% con la API existente (`GenerateRuleset` no
-//   cambia de firma, no cambia el output).
+//   - Definir el template principal como constante reutilizable.
+//   - Definir la nueva tabla `sm_nat` para NAT (sNAT en postrouting,
+//     dNAT en prerouting) que se CONCATENA al final del ruleset.
+//   - Definir la nueva tabla `sm_forward` con chain forward stateful
+//     para hosts que actuan como router/gateway entre interfaces.
+//     Referencia: clase 044 del curso Udemy (forward stateful) +
+//     clase 028 (default policy drop) + clases 041-042 (tablas separadas
+//     por dominio funcional: filter, nat, forward).
+//   - API: `GenerateRuleset` mantiene compat 100% (firma y composicion
+//     del template principal). Los bloques nuevos (sm_nat, sm_forward)
+//     se concatenan al final y son aditivos.
 //
 // Por que este approach: NO quiero meter "el refactor completo" en
 // esta sesion y romper 4 tests que dependen de la salida EXACTA.
@@ -56,6 +62,85 @@ table inet sm_nat {
 
     chain postrouting {
         type nat hook postrouting priority srcnat; policy accept;
+    }
+}
+`
+
+// smForwardTableTemplate es el bloque adicional que se concatena al ruleset
+// (despues de smNatTableTemplate). Contiene la tabla `sm_forward` con la
+// chain `forward` para hosts que actuan como router/gateway entre
+// interfaces (clase 044 del curso Udemy: stateful + forward).
+//
+// Diseno MikroTik-style: una tabla por dominio funcional. `sm_forward`
+// se ocupa SOLO del trafico en transito entre interfaces; `input` (en
+// `table inet sm`) se ocupa del trafico destinado al host. Esto preserva
+// el principio "cada tabla/cada regla con proposito unico" y permite
+// al modulo inspect/ distinguir claramente entre host-endpoint y
+// router-de-borde (ver `patrones-diseno-sm-ng.md` tabla de senales
+// detectables).
+//
+// Composicion de la chain (orden importa, igual que `input`):
+//  1. Conntrack fast-path (established,related) — clase 043.
+//  2. Conntrack invalido drop — evita bypass.
+//  3. Antirecon (4 patrones: XMAS, NULL, FIN+SYN, SYN+RST).
+//  4. Whitelist/Immune accept (bypass total) — referencian los sets
+//     definidos en `table inet sm`. nftables permite cross-table
+//     set reference (clase 025: tablas + cadenas).
+//  5. Blacklist drop (antes de GeoIP, igual que input).
+//  6. GeoIP allowlist drop (solo paises permitidos).
+//  7. Default DROP (clase 028: default policy drop).
+//
+// Notas de diseno:
+//   - NO incluye servicios (SSH/80/443) en forward: son para `input`
+//     (host local), no para trafico en transito entre interfaces. El
+//     operador agrega reglas de forward especificas con
+//     `nft add rule inet sm_forward forward ...` o via wizard futuro.
+//   - Comments `sm-fwd-*` (prefijo `fwd`) para distinguir de las reglas
+//     de `input` (`sm-*`) en `nft list` y en `inspect/`.
+const smForwardTableTemplate = `
+
+# Tabla Forward (sm_forward) — trafico en transito entre interfaces.
+# Tabla separada de inet sm (input/output del host) y inet sm_nat
+# (NAT). Proposito unico: filtrar paquetes que pasan por el host sin
+# ser entregados a el.
+# Referencia: clase 044 del curso Udemy (stateful + forward).
+# Default policy: drop (clase 028).
+table inet sm_forward {
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+
+        # 1 · Conntrack fast-path (stateful)
+        ct state established,related accept comment "sm-fwd-fastpath"
+
+        # 2 · Conntrack invalido
+        ct state invalid drop comment "sm-fwd-invalid-drop"
+
+        # 3 · Antirecon — XMAS, NULL, FIN+SYN, SYN+RST
+        tcp flags & (fin|syn|rst|psh|ack|urg) == fin|syn|rst|psh|ack|urg \
+            limit rate 5/minute log prefix "SM-FWD-ANTIRECON XMAS " drop comment "sm-fwd-antirecon-xmas"
+        tcp flags & (fin|syn|rst|psh|ack|urg) == 0x0 \
+            limit rate 5/minute log prefix "SM-FWD-ANTIRECON NULL " drop comment "sm-fwd-antirecon-null"
+        tcp flags & (fin|syn) == fin|syn \
+            limit rate 5/minute log prefix "SM-FWD-ANTIRECON FIN+SYN " drop comment "sm-fwd-antirecon-finsyn"
+        tcp flags & (syn|rst) == syn|rst \
+            limit rate 5/minute log prefix "SM-FWD-ANTIRECON SYN+RST " drop comment "sm-fwd-antirecon-synrst"
+
+        # 4 · Confiables (Tier A) + Intocables (Tier B) — bypass total
+        ip  saddr @sm_whitelist4 accept comment "sm-fwd-whitelist4"
+        ip6 saddr @sm_whitelist6 accept comment "sm-fwd-whitelist6"
+        ip  saddr @sm_immune4 accept comment "sm-fwd-immune4"
+        ip6 saddr @sm_immune6 accept comment "sm-fwd-immune6"
+
+        # 5 · Blacklist (antes de GeoIP)
+        ip  saddr @sm_blacklist4 drop comment "sm-fwd-blacklist4"
+        ip6 saddr @sm_blacklist6 drop comment "sm-fwd-blacklist6"
+
+        # 6 · GeoIP allowlist (solo paises permitidos)
+        ip  saddr != @sm_geoallow4 drop comment "sm-fwd-geoallow4"
+        ip6 saddr != @sm_geoallow6 drop comment "sm-fwd-geoallow6"
+
+        # 7 · Default DROP
+        log prefix "SM-FWD-DROP-DEFAULT " drop comment "sm-fwd-default-drop"
     }
 }
 `

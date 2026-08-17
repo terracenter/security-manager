@@ -8,11 +8,11 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/terracenter/security-manager-ng/internal/i18n"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
 	"github.com/terracenter/security-manager-ng/internal/safeapply"
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
-
 
 // GeoIP gestiona el acceso por país (ALLOWLIST) usando sets nftables nativos (sm_geoallow4/6).
 // Fuente de rangos: ipdeny.com (zone files, un CIDR por línea).
@@ -35,11 +35,11 @@ func (g *GeoIP) Name() string { return "GeoIP — países permitidos" }
 // el propósito es dejar todo limpio.
 func (g *GeoIP) Reset() {
 	if err := os.Remove(infra.AllowedCountriesFile); err == nil {
-		fmt.Printf("  Eliminado: %s\n", infra.AllowedCountriesFile)
+		fmt.Printf(i18n.T("geoip.reset.removed_file"), infra.AllowedCountriesFile)
 	} else if os.IsNotExist(err) {
-		fmt.Printf("  No había %s.\n", infra.AllowedCountriesFile)
+		fmt.Printf(i18n.T("geoip.reset.not_found"), infra.AllowedCountriesFile)
 	} else {
-		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", infra.AllowedCountriesFile, err)
+		fmt.Printf(i18n.T("geoip.reset.warn_remove"), infra.AllowedCountriesFile, err)
 	}
 
 	// os.RemoveAll no distingue "no existía" de "existía y se borró" (ambos
@@ -48,33 +48,33 @@ func (g *GeoIP) Reset() {
 	_, statErr := os.Stat(infra.GeoIPDir)
 	existed := statErr == nil
 	if err := os.RemoveAll(infra.GeoIPDir); err != nil {
-		fmt.Printf("  ADVERTENCIA: no se pudo eliminar %s: %v\n", infra.GeoIPDir, err)
+		fmt.Printf(i18n.T("geoip.reset.warn_remove"), infra.GeoIPDir, err)
 	} else if existed {
-		fmt.Printf("  Eliminado: %s\n", infra.GeoIPDir)
+		fmt.Printf(i18n.T("geoip.reset.removed_file"), infra.GeoIPDir)
 	} else {
-		fmt.Printf("  No había %s.\n", infra.GeoIPDir)
+		fmt.Printf(i18n.T("geoip.reset.not_found"), infra.GeoIPDir)
 	}
 }
 
 func (g *GeoIP) Menu() {
 	if _, err := os.Stat(infra.ConfDir + "/blocked_countries.conf"); err == nil {
-		fmt.Println("\n  ⚠  AVISO: Se detectó blocked_countries.conf (formato GeoIP anterior — BLOCKLIST).")
-		fmt.Println("     El módulo GeoIP ahora opera en modo ALLOWLIST (allowed_countries.conf).")
-		fmt.Println("     Los países del archivo anterior eran BLOQUEADOS — contenido semánticamente opuesto.")
-		fmt.Println("     Configura los países PERMITIDOS desde cero con [1].")
+		fmt.Println(i18n.T("geoip.legacy.blocklist.header"))
+		fmt.Println(i18n.T("geoip.legacy.blocklist.allowlist_note"))
+		fmt.Println(i18n.T("geoip.legacy.blocklist.opposite"))
+		fmt.Println(i18n.T("geoip.legacy.blocklist.reconfigure"))
 	}
 	for {
-		fmt.Println("\n  ┌─ GeoIP — Países permitidos ─────────────┐")
-		fmt.Println("  │  [1] Agregar país a la lista             │")
-		fmt.Println("  │  [2] Eliminar país de la lista           │")
-		fmt.Println("  │  [3] Ver países permitidos               │")
-		fmt.Println("  │  [4] Actualizar rangos (ipdeny.com)      │")
-		fmt.Println("  │  [5] Aplicar / recargar ruleset          │")
-		fmt.Println("  │  [6] Resetear GeoIP                      │")
-		fmt.Println("  │  [?] Vista previa del ruleset            │")
-		fmt.Println("  │  [0] Volver                              │")
-		fmt.Println("  └─────────────────────────────────────────┘")
-		fmt.Print("  Selección: ")
+		fmt.Println(i18n.T("geoip.menu.header"))
+		fmt.Println(i18n.T("geoip.menu.add"))
+		fmt.Println(i18n.T("geoip.menu.del"))
+		fmt.Println(i18n.T("geoip.menu.list"))
+		fmt.Println(i18n.T("geoip.menu.update"))
+		fmt.Println(i18n.T("geoip.menu.apply"))
+		fmt.Println(i18n.T("geoip.menu.reset"))
+		fmt.Println(i18n.T("geoip.menu.preview"))
+		fmt.Println(i18n.T("fw.menu.back"))
+		fmt.Println(i18n.T("geoip.menu.footer"))
+		fmt.Print(i18n.T("fw.menu.prompt") + " ")
 
 		if !g.scanner.Scan() {
 			return
@@ -97,7 +97,7 @@ func (g *GeoIP) Menu() {
 		case "0":
 			return
 		default:
-			fmt.Println("  Opción inválida.")
+			fmt.Println(i18n.T("fw.invalid.option"))
 		}
 	}
 }
@@ -115,19 +115,19 @@ func (g *GeoIP) addCountry() {
 			continue
 		}
 		if !validCC(cc) {
-			fmt.Printf("  ERROR: '%s' no es un código válido — usa 2 letras (ej: VE).\n", cc)
+			fmt.Printf(i18n.T("geoip.err.bad_cc"), cc)
 			return
 		}
 		toAdd = append(toAdd, cc)
 	}
 	if len(toAdd) == 0 {
-		fmt.Println("  ERROR: no se especificó ningún país.")
+		fmt.Println(i18n.T("geoip.err.no_cc"))
 		return
 	}
 
 	countries, err := loadCountries()
 	if err != nil {
-		fmt.Printf("  ERROR leyendo config: %v\n", err)
+		fmt.Printf(i18n.T("geoip.err.read_config"), err)
 		return
 	}
 
@@ -139,7 +139,7 @@ func (g *GeoIP) addCountry() {
 	var added []string
 	for _, cc := range toAdd {
 		if existing[cc] {
-			fmt.Printf("  %s ya está en la lista — omitido.\n", cc)
+			fmt.Printf(i18n.T("geoip.add.already_present"), cc)
 			continue
 		}
 		countries = append(countries, cc)
@@ -148,20 +148,20 @@ func (g *GeoIP) addCountry() {
 	}
 
 	if len(added) == 0 {
-		fmt.Println("  Sin cambios — todos los países indicados ya estaban en la lista.")
+		fmt.Println(i18n.T("geoip.add.no_changes"))
 		return
 	}
 
 	if err := saveCountries(countries); err != nil {
-		fmt.Printf("  ERROR guardando config: %v\n", err)
+		fmt.Printf(i18n.T("geoip.err.save_config"), err)
 		return
 	}
 
-	fmt.Printf("\n  Agregado(s): %s\n", strings.Join(added, ", "))
-	fmt.Println("  ⚠  Asegúrate de que tu IP esté en Whitelist antes de aplicar GeoIP.")
-	fmt.Println("  Descargando rangos GeoIP...")
+	fmt.Printf(i18n.T("geoip.add.success"), strings.Join(added, ", "))
+	fmt.Println(i18n.T("geoip.add.whitelist_warning"))
+	fmt.Println(i18n.T("geoip.update.downloading"))
 	g.updateRanges()
-	fmt.Println("\n  Aplicando ruleset con GeoIP actualizado...")
+	fmt.Println(i18n.T("geoip.update.applying"))
 	g.applyGeoIPCore()
 }
 
@@ -173,7 +173,7 @@ func (g *GeoIP) removeCountry() {
 	cc := strings.ToUpper(strings.TrimSpace(g.scanner.Text()))
 	countries, err := loadCountries()
 	if err != nil {
-		fmt.Printf("  ERROR leyendo config: %v\n", err)
+		fmt.Printf(i18n.T("geoip.err.read_config"), err)
 		return
 	}
 	var updated []string
@@ -186,14 +186,14 @@ func (g *GeoIP) removeCountry() {
 		updated = append(updated, c)
 	}
 	if !found {
-		fmt.Printf("  %s no está en la lista.\n", cc)
+		fmt.Printf(i18n.T("geoip.del.not_present"), cc)
 		return
 	}
 	if err := saveCountries(updated); err != nil {
-		fmt.Printf("  ERROR guardando config: %v\n", err)
+		fmt.Printf(i18n.T("geoip.err.save_config"), err)
 		return
 	}
-	fmt.Printf("  %s eliminado. Usa [5] para recargar el ruleset.\n", cc)
+	fmt.Printf(i18n.T("geoip.del.success"), cc)
 }
 
 func (g *GeoIP) listCountries() {
@@ -203,12 +203,12 @@ func (g *GeoIP) listCountries() {
 		return
 	}
 	if len(countries) == 0 {
-		fmt.Println("\n  Sin países en la lista de permitidos.")
-		fmt.Println("  Usa [1] para agregar países y [4]+[5] para descargar rangos y aplicar.")
+		fmt.Println(i18n.T("geoip.list.empty"))
+		fmt.Println(i18n.T("geoip.list.hint"))
 		return
 	}
-	fmt.Println("\n  Países PERMITIDOS (solo estos alcanzan SSH/443/ICMP):")
-	fmt.Println("  Fecha = ultima descarga de rangos desde ipdeny.com")
+	fmt.Println(i18n.T("geoip.list.header"))
+	fmt.Println(i18n.T("geoip.list.date_hint"))
 	fmt.Println()
 	for _, cc := range countries {
 		lower := strings.ToLower(cc)
@@ -221,15 +221,15 @@ func (g *GeoIP) listCountries() {
 func (g *GeoIP) updateRanges() {
 	countries, err := loadCountries()
 	if err != nil {
-		fmt.Printf("  ERROR leyendo config: %v\n", err)
+		fmt.Printf(i18n.T("geoip.err.read_config"), err)
 		return
 	}
 	if len(countries) == 0 {
-		fmt.Println("  Sin países configurados. Agrega países con [1] primero.")
+		fmt.Println(i18n.T("geoip.list.empty_hint"))
 		return
 	}
 	if err := os.MkdirAll(infra.GeoIPDir, 0o750); err != nil {
-		fmt.Printf("  ERROR creando %s: %v\n", infra.GeoIPDir, err)
+		fmt.Printf(i18n.T("geoip.update.err_create_dir"), infra.GeoIPDir, err)
 		return
 	}
 	for _, cc := range countries {
@@ -237,49 +237,49 @@ func (g *GeoIP) updateRanges() {
 		zone4 := infra.GeoIPDir + "/" + lower + ".zone"
 		zone6 := infra.GeoIPDir + "/" + lower + ".zone6"
 
-		fmt.Printf("  [%s] descargando IPv4...\n", cc)
+		fmt.Printf(i18n.T("geoip.update.dl_v4"), cc)
 		if err := downloadZone("https://www.ipdeny.com/ipblocks/data/countries/"+lower+".zone", zone4); err != nil {
 			if _, existErr := os.Stat(zone4); existErr == nil {
-				fmt.Printf("  [%s] IPv4 ⚠ %v — usando datos previos\n", cc, err)
+				fmt.Printf(i18n.T("geoip.update.warn_v4"), cc, err)
 			} else {
-				fmt.Printf("  [%s] IPv4 ERROR: %v\n", cc, err)
+				fmt.Printf(i18n.T("geoip.update.err_v4"), cc, err)
 			}
 		} else {
 			lines, _ := infra.ReadLines(zone4)
-			fmt.Printf("  [%s] IPv4 OK (%d rangos)\n", cc, len(lines))
+			fmt.Printf(i18n.T("geoip.update.ok_v4"), cc, len(lines))
 		}
 
-		fmt.Printf("  [%s] descargando IPv6...\n", cc)
+		fmt.Printf(i18n.T("geoip.update.dl_v6"), cc)
 		if err := downloadZone("https://www.ipdeny.com/ipv6/ipaddresses/blocks/"+lower+".zone", zone6); err != nil {
 			if _, existErr := os.Stat(zone6); existErr == nil {
-				fmt.Printf("  [%s] IPv6 ⚠ %v — usando datos previos\n", cc, err)
+				fmt.Printf(i18n.T("geoip.update.warn_v6"), cc, err)
 			} else {
-				fmt.Printf("  [%s] IPv6 ERROR: %v\n", cc, err)
+				fmt.Printf(i18n.T("geoip.update.err_v6"), cc, err)
 			}
 		} else {
 			lines, _ := infra.ReadLines(zone6)
-			fmt.Printf("  [%s] IPv6 OK (%d rangos)\n", cc, len(lines))
+			fmt.Printf(i18n.T("geoip.update.ok_v6"), cc, len(lines))
 		}
 	}
-	fmt.Println("\n  Actualización completada. Usa [5] para aplicar el ruleset.")
+	fmt.Println(i18n.T("geoip.update.complete"))
 }
 
 func (g *GeoIP) previewRuleset() {
 	geoip, err := infra.LoadGeoIPData()
 	if err != nil {
-		fmt.Printf("  ERROR cargando datos GeoIP: %v\n", err)
+		fmt.Printf(i18n.T("geoip.update.err_load"), err)
 		return
 	}
 	sshPort := infra.DetectSSHPort()
 	port80, _ := infra.ReadPort80Option()
 	ruleset := infra.GenerateRuleset(sshPort, true, geoip, port80)
 
-	fmt.Println("\n  ┌─ Vista previa del ruleset (sm.nft) ─────┐")
-	fmt.Println("  " + strings.Repeat("─", 42))
+	fmt.Println(i18n.T("geoip.preview.header"))
+	fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 42))
 	for _, line := range strings.Split(ruleset, "\n") {
 		fmt.Printf("  %s\n", line)
 	}
-	fmt.Println("  " + strings.Repeat("─", 42))
+	fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 42))
 	fmt.Println()
 }
 
@@ -288,7 +288,7 @@ func (g *GeoIP) previewRuleset() {
 func (g *GeoIP) applyGeoIPCore() {
 	geoip, err := infra.LoadGeoIPData()
 	if err != nil {
-		fmt.Printf("  ERROR cargando datos GeoIP: %v\n", err)
+		fmt.Printf(i18n.T("geoip.update.err_load"), err)
 		return
 	}
 	sshPort := infra.DetectSSHPort()
@@ -340,7 +340,7 @@ func (g *GeoIP) applyGeoIPCore() {
 func (g *GeoIP) applyGeoIP() {
 	geoip, err := infra.LoadGeoIPData()
 	if err != nil {
-		fmt.Printf("  ERROR cargando datos GeoIP: %v\n", err)
+		fmt.Printf(i18n.T("geoip.update.err_load"), err)
 		return
 	}
 	if len(geoip.Countries) == 0 {
@@ -551,7 +551,7 @@ func (g *GeoIP) RunAction(action string, args ...string) bool {
 func (g *GeoIP) cliAdd(codes []string) bool {
 	countries, err := loadCountries()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR leyendo config: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("geoip.err.read_config"), err)
 		return false
 	}
 	existing := make(map[string]bool)
@@ -562,11 +562,11 @@ func (g *GeoIP) cliAdd(codes []string) bool {
 	for _, raw := range codes {
 		cc := strings.ToUpper(strings.TrimSpace(raw))
 		if !validCC(cc) {
-			fmt.Fprintf(os.Stderr, "  ERROR: '%s' no es un código válido — usa 2 letras (ej: VE).\n", cc)
+			fmt.Fprintf(os.Stderr, i18n.T("geoip.err.bad_cc"), cc)
 			return false
 		}
 		if existing[cc] {
-			fmt.Printf("  %s ya está en la lista — omitido.\n", cc)
+			fmt.Printf(i18n.T("geoip.add.already_present"), cc)
 			continue
 		}
 		countries = append(countries, cc)
@@ -578,7 +578,7 @@ func (g *GeoIP) cliAdd(codes []string) bool {
 		return true
 	}
 	if err := saveCountries(countries); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR guardando config: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("geoip.err.save_config"), err)
 		return false
 	}
 	fmt.Printf("  Agregado(s): %s\n", strings.Join(added, ", "))
@@ -593,7 +593,7 @@ func (g *GeoIP) cliDel(cc string) bool {
 	cc = strings.ToUpper(strings.TrimSpace(cc))
 	countries, err := loadCountries()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR leyendo config: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("geoip.err.read_config"), err)
 		return false
 	}
 	var updated []string
@@ -606,11 +606,11 @@ func (g *GeoIP) cliDel(cc string) bool {
 		updated = append(updated, c)
 	}
 	if !found {
-		fmt.Fprintf(os.Stderr, "  %s no está en la lista.\n", cc)
+		fmt.Fprintf(os.Stderr, i18n.T("geoip.del.not_present"), cc)
 		return false
 	}
 	if err := saveCountries(updated); err != nil {
-		fmt.Fprintf(os.Stderr, "  ERROR guardando config: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("geoip.err.save_config"), err)
 		return false
 	}
 	fmt.Printf("  %s eliminado. Aplicando ruleset...\n", cc)
