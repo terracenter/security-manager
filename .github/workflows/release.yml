@@ -9,7 +9,32 @@ permissions:
   contents: write
 
 jobs:
+  validate-and-test:
+    name: Quality Gate — build, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.7"
+          cache: true
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
   build-and-release:
+    needs: validate-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
