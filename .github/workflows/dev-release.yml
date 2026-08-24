@@ -53,9 +53,6 @@ jobs:
             cuando vos pusheas un tag `v0.8.0-dev.N`. NO esta firmado con GPG
             (esa validacion es solo para `main`). Tampoco es estable.
 
-            SI queres una version estable, instala desde un tag `v*` con:
-              curl -fsSL https://raw.githubusercontent.com/terracenter/Security-Manager-Ng/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
-
             Uso esperado: hosts de prueba, desarrollo, experimentacion.
             NO recomendado para produccion.
 

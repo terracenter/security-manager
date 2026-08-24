@@ -2,7 +2,7 @@
 # script-dev/install.sh — Instalador de SM-NG desde la rama `dev` (modo desarrollo).
 #
 # Diferencia con main:
-#   - main: tags v* (estables), firma GPG, install via deploy/install.sh.
+#   - main: tags v* (estables), firma GPG. Aun no tiene un instalador propio.
 #   - dev:  tags v0.8.0-dev.N (pre-release, sin GPG), install via este script.
 #
 # Ambos tienen CI/CD. dev produce Releases pre-release cuando vos pusheas
@@ -13,8 +13,6 @@
 #
 # Que hace:
 #   1. Banner grande: imprime "ESTO ES DEV — puede tener BUGs" en stderr/color.
-#      Esto es lo que distingue este script de deploy/install.sh (main), que NO
-#      imprime ese banner. Mismo flujo de install, diferente senal de riesgo.
 #   2. Consulta la API publica de GitHub para encontrar el ultimo Release pre-release
 #      con tag que matche v0.8.0-dev.*.
 #   3. Descarga el binario y el .sha256 desde el Release.
@@ -32,8 +30,8 @@ BINARY="security-manager-ng"
 DEST="/usr/local/sbin/${BINARY}-dev"
 
 # ── Banner de advertencia (BIG — imprime esto primero, sin importar nada más) ──
-# Es la diferencia clave vs deploy/install.sh (main): quien corre este script
-# debe entender inmediatamente que esta en dev. NO continuar si no esta seguro.
+# Quien corre este script debe entender inmediatamente que esta en dev.
+# NO continuar si no esta seguro.
 echo >&2
 cat >&2 <<'EOF'
 ================================================================
@@ -46,9 +44,6 @@ cat >&2 <<'EOF'
   Esta corriendo una PRE-RELEASE generada automaticamente al pushear
   un tag v0.8.0-dev.N al repo. La firma GPG NO se valida (la firma
   GPG es exclusiva de los tags v* de produccion en main).
-
-  Si queres la version estable, usa:
-    curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager/main/deploy/install.sh | SMNG_FROM_RELEASE=1 bash
 
   Uso esperado: hosts de prueba, desarrollo, experimentacion.
 ================================================================

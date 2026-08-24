@@ -22,8 +22,7 @@ same binary, via an interactive menu or a CLI for automation.
 
 ## Quickstart / Usage
 
-Install: see [Installation from GitHub Releases](#installation-from-github-releases-alternate)
-below (mandatory GPG signature verification included).
+Install: see [Installation from GitHub Releases](#installation-from-github-releases) below.
 
 SM-NG has two coexisting usage modes:
 
@@ -199,13 +198,7 @@ Security-Manager-NG/
 go build ./...
 ```
 
-```bash
-# Cross-compile and deploy to remote host (requires Go in PATH)
-bash deploy/deploy.sh <IP_or_hostname>
-```
-
-The binary is installed to `/usr/local/sbin/security-manager-ng` on the remote host. **Never**
-use `go run` in production — always use the compiled binary.
+**Never** use `go run` in production — always use the compiled binary.
 
 ### Validate the ruleset before applying
 
@@ -219,14 +212,10 @@ sudo nft list table inet sm
 sudo nft list set inet sm sm_whitelist4
 ```
 
-### Installation from GitHub Releases (alternate)
+### Installation from GitHub Releases
 
-Every Release is GPG-signed. Signature verification is **mandatory and automatic** — the installer
-aborts on its own if it fails; it doesn't depend on the user reviewing it by hand.
-
-**Release signing key fingerprint:** `6D33CBB56A4FA1E2966C40225923730155062949`
-
-**One-command install** (downloads, verifies SHA256, and installs):
+**`dev` branch (pre-release, not GPG-signed) — one-command install** (downloads, verifies
+SHA256, and installs):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/terracenter/security-manager/dev/script-dev/install.sh | bash
@@ -239,10 +228,12 @@ the binary to `/usr/local/sbin/security-manager-ng-dev` — that's expected, jus
 
 > ⚠️ **This is the `dev` branch (pre-release).** The script prints a large banner:
 > `!!! ATENCION: INSTALADOR DE DESARROLLO (rama: dev) !!!`. If you do NOT see that banner,
-> the script is wrong. For production, use the `main` installer with GPG.
+> the script is wrong.
 
-<details>
-<summary>Manual installation (step-by-step audit, for anyone who prefers to review each verification)</summary>
+**`main` branch (stable, GPG-signed): no Release or installer published yet.** The signing key
+is already generated and published for when that Release exists.
+
+**Release signing key fingerprint:** `6D33CBB56A4FA1E2966C40225923730155062949`
 
 The public key is available from two sources independent of each other (and of this repo itself, so a
 GitHub compromise alone can't forge both at once):
@@ -256,23 +247,7 @@ gpg --keyserver keys.openpgp.org --recv-keys 6D33CBB56A4FA1E2966C402259237301550
 
 # Confirm the imported fingerprint matches the one above exactly
 gpg --fingerprint 6D33CBB56A4FA1E2966C40225923730155062949
-
-# Download the binary, checksum, and signature
-# NOTE: while the project has no stable release yet (see Current status below), use the
-# explicit tag instead of "latest" — check the most recent one at
-# https://github.com/terracenter/Security-Manager-Ng/releases
-curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng -o security-manager-ng
-curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng.sha256 -o security-manager-ng.sha256
-curl -sL https://github.com/terracenter/security-manager-ng/releases/download/v0.7.0/security-manager-ng.asc -o security-manager-ng.asc
-
-# Verify the GPG signature (required) and checksum (extra defense)
-gpg --verify security-manager-ng.asc security-manager-ng
-sha256sum -c security-manager-ng.sha256
-
-sudo install -m 750 -o root -g root security-manager-ng /usr/local/sbin/security-manager-ng
 ```
-
-</details>
 
 ---
 
