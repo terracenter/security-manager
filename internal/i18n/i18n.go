@@ -19,7 +19,7 @@
 //
 //  1. Crear internal/i18n/strings_<lang>.json con la misma estructura
 //     que strings_es.json.
-//  2. Agregar el filename al array `assets` abajo.
+//  2. Agregar el filename a la directiva //go:embed y al slice `assets` abajo.
 //  3. Listo.
 //
 // Limitaciones conocidas:
@@ -31,6 +31,7 @@
 package i18n
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,14 +39,18 @@ import (
 	"sync"
 )
 
+//go:embed strings_es.json strings_en.json
+var catalogFS embed.FS
+
 // assets lista los archivos JSON embebidos. El primer elemento es el
 // default (espanol). El resto se carga bajo demanda segun el idioma
 // seleccionado. Si un idioma falta, se cae al default.
 //
-// Para agregar un idioma: crear strings_<lang>.json y agregarlo aqui.
+// Para agregar un idioma: crear strings_<lang>.json, agregarlo a //go:embed
+// y al slice assets aqui.
 var assets = []string{
-	"internal/i18n/strings_es.json",
-	"internal/i18n/strings_en.json",
+	"strings_es.json",
+	"strings_en.json",
 }
 
 // catalog es el dict cargado en memoria: lang -> key -> string.
@@ -77,8 +82,6 @@ func Load() error {
 
 	cache = make(catalog)
 	for _, path := range assets {
-		// El path es relativo a la raiz del modulo Go (donde corre `go test`).
-		// Para resolver correctamente usamos una lookup que intenta varias rutas.
 		data, err := readAsset(path)
 		if err != nil {
 			// Si un idioma falla al cargar, lo salteamos pero seguimos
@@ -101,24 +104,9 @@ func Load() error {
 	return nil
 }
 
-// readAsset lee un archivo del filesystem intentando varias rutas
-// relativas. Esto cubre tanto `go test ./internal/i18n/` (cwd = el dir
-// del paquete) como `go test ./...` (cwd = raiz del modulo).
+// readAsset lee un archivo del filesystem embebido catalogFS.
 func readAsset(path string) ([]byte, error) {
-	candidates := []string{
-		path,
-		"../" + path,
-		"../../" + path,
-	}
-	var lastErr error
-	for _, p := range candidates {
-		if data, err := os.ReadFile(p); err == nil {
-			return data, nil
-		} else {
-			lastErr = err
-		}
-	}
-	return nil, fmt.Errorf("no se pudo leer %s: %w", path, lastErr)
+	return catalogFS.ReadFile(path)
 }
 
 func langFromFilename(path string) string {
