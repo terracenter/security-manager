@@ -98,9 +98,9 @@ func CurrentUser() string {
 	return "root"
 }
 
-// DetectPkgManager retorna el gestor de paquetes disponible: "apt", "dnf", "yum" o "".
+// DetectPkgManager retorna el gestor de paquetes disponible: "apt", "dnf", "yum", "pacman" o "".
 func DetectPkgManager() string {
-	for _, pm := range []string{"dnf", "yum", "apt"} {
+	for _, pm := range []string{"dnf", "yum", "apt", "pacman"} {
 		if _, err := exec.LookPath(pm); err == nil {
 			return pm
 		}
@@ -110,8 +110,8 @@ func DetectPkgManager() string {
 
 // DistroInfo identifica la distribución Linux activa.
 type DistroInfo struct {
-	ID      string // "debian", "ubuntu", "almalinux", "rocky", "rhel", "centos", ...
-	Family  string // "debian" | "ubuntu" | "rhel" | "unknown"
+	ID      string // "debian", "ubuntu", "almalinux", "rocky", "rhel", "centos", "arch", ...
+	Family  string // "debian" | "ubuntu" | "rhel" | "arch" | "unknown"
 	Version string // "12", "22.04", "9", etc.
 	Name    string // nombre legible del campo NAME en /etc/os-release
 }
@@ -159,6 +159,8 @@ func resolveFamily(s string) string {
 		s == "centos" || s == "fedora" ||
 		strings.Contains(s, "rhel") || strings.Contains(s, "fedora"):
 		return "rhel"
+	case s == "arch" || strings.Contains(s, "arch"):
+		return "arch"
 	default:
 		return "unknown"
 	}
@@ -186,9 +188,12 @@ func OfferInstall(readLine func(string) string, pkgs ...string) bool {
 
 	fmt.Printf("\n  "+i18n.T("offer_install.required")+" : %s\n", pkgList)
 	fmt.Printf("  "+i18n.T("offer_install.pm_detected")+"   : %s\n", pm)
-	if pm == "apt" {
+	switch pm {
+	case "apt":
 		fmt.Printf("  "+i18n.T("offer_install.command")+"            : apt update && apt install -y %s\n", pkgList)
-	} else {
+	case "pacman":
+		fmt.Printf("  "+i18n.T("offer_install.command")+"            : pacman -S --noconfirm %s\n", pkgList)
+	default:
 		fmt.Printf("  "+i18n.T("offer_install.command")+"            : %s install -y %s\n", pm, pkgList)
 	}
 
@@ -198,19 +203,22 @@ func OfferInstall(readLine func(string) string, pkgs ...string) bool {
 		return false
 	}
 
-	installArgs := append([]string{"install", "-y"}, pkgs...)
 	var installCmd *exec.Cmd
-	if pm == "apt" {
+	switch pm {
+	case "apt":
 		fmt.Println("\n  " + i18n.T("offer_install.running_apt_update"))
 		if err := exec.Command("apt", "update").Run(); err != nil {
 			fmt.Println("  "+i18n.T("offer_install.error.apt_update")+":", err)
 			return false
 		}
 		fmt.Printf("  "+i18n.T("offer_install.running_install")+" %s...\n", pkgList)
-		installCmd = exec.Command("apt", installArgs...)
-	} else {
+		installCmd = exec.Command("apt", append([]string{"install", "-y"}, pkgs...)...)
+	case "pacman":
+		fmt.Printf("  "+i18n.T("offer_install.running_install")+" pacman -S --noconfirm %s...\n", pkgList)
+		installCmd = exec.Command("pacman", append([]string{"-S", "--noconfirm"}, pkgs...)...)
+	default:
 		fmt.Printf("  "+i18n.T("offer_install.running_install")+" %s install -y %s...\n", pm, pkgList)
-		installCmd = exec.Command(pm, installArgs...)
+		installCmd = exec.Command(pm, append([]string{"install", "-y"}, pkgs...)...)
 	}
 	installCmd.Stdout = os.Stdout
 	installCmd.Stderr = os.Stderr

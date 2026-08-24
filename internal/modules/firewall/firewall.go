@@ -155,7 +155,7 @@ func writeLogrotateConfig() error {
 func (f *Firewall) applyBase() {
 	// FASE 1: Validar prereqs (nftables, etc.)
 	if err := sys.CheckAndInstallPrereqs(f.readLine); err != nil {
-		f.logger.Error("No se pudieron instalar los paquetes requeridos.", fmt.Sprintf("%v", err))
+		f.logger.Error(fmt.Sprintf("No se pudieron instalar los paquetes requeridos: %v", err), "")
 		return
 	}
 
