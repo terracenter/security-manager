@@ -40,8 +40,8 @@ func (f *Firewall) Name() string { return i18n.T("fw.name") }
 // para que el siguiente [1] Aplicar corra el wizard de detección de puertos de nuevo
 // en vez de reutilizar silenciosamente la configuración de una corrida anterior.
 func (f *Firewall) Reset() {
-	if out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput(); err != nil {
-		fmt.Println("  " + i18n.T("fw.reset.info_not_found") + " " + strings.TrimSpace(string(out)))
+	if err := safeapply.DeleteAllSmTables(); err != nil {
+		fmt.Println("  " + i18n.T("fw.reset.info_not_found") + " " + err.Error())
 	} else {
 		fmt.Println("  " + i18n.T("fw.reset.removed_table"))
 	}
