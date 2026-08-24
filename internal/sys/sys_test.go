@@ -4,6 +4,30 @@ import (
 	"testing"
 )
 
+func TestResolveFamily(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"ubuntu", "ubuntu"},
+		{"debian", "debian"},
+		{"rhel", "rhel"},
+		{"almalinux", "rhel"},
+		{"rocky", "rhel"},
+		{"fedora", "rhel"},
+		{"arch", "arch"},
+		{"desconocida", "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got := resolveFamily(tt.id)
+			if got != tt.want {
+				t.Errorf("resolveFamily(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConfirmStrong(t *testing.T) {
 	tests := []struct {
 		name         string

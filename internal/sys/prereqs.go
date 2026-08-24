@@ -22,6 +22,8 @@ func CheckAndInstallPrereqs(readLine func(string) string) error {
 		requiredPkgs = []string{"nftables", "iproute2"}
 	case "rhel":
 		requiredPkgs = []string{"nftables", "iproute"}
+	case "arch":
+		requiredPkgs = []string{"nftables", "iproute2"}
 	default:
 		return fmt.Errorf("distribución no soportada: %s", distro.ID)
 	}
@@ -113,6 +115,10 @@ func isPackageInstalled(family string, pkg string) bool {
 	case "rhel":
 		// RHEL-like: rpm -q <pkg>
 		_, err := RunCmdOut("rpm", "-q", pkg)
+		return err == nil
+	case "arch":
+		// Arch: pacman -Q <pkg>
+		_, err := RunCmdOut("pacman", "-Q", pkg)
 		return err == nil
 	default:
 		return false
