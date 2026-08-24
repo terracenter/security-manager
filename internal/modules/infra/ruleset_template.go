@@ -57,6 +57,9 @@ const smNatTableTemplate = `
 #   nft add rule inet sm_nat postrouting oifname eth0 snat to 1.2.3.4
 #   nft add rule inet sm_nat prerouting tcp dport 80 dnat to 192.168.1.10
 #   nft add rule inet sm_nat postrouting oifname wg0 masquerade
+add table inet sm_nat
+delete table inet sm_nat
+
 table inet sm_nat {
     chain prerouting {
         type nat hook prerouting priority dstnat; policy accept;
@@ -79,7 +82,7 @@ table inet sm_nat {
 // el principio "cada tabla/cada regla con proposito unico" y permite
 // al modulo inspect/ distinguir claramente entre host-endpoint y
 // router-de-borde (ver `patrones-diseno-sm-ng.md` tabla de senales
-// detectables).
+// detectable).
 //
 // Composicion de la chain (orden importa, igual que `input`):
 //  1. Conntrack fast-path (established,related) — clase 043.
@@ -89,18 +92,17 @@ table inet sm_nat {
 //     (duplicados de `table inet sm`) porque nftables NO comparte named
 //     sets entre tablas — confirmado con `nft -c` real y con
 //     `man.archlinux.org/man/nft.8`.
-//  5. Blacklist drop (antes de GeoIP, igual que input).
-//  6. GeoIP allowlist drop (solo paises permitidos).
-//  7. Default DROP (clase 028: default policy drop).
+//  5. Blacklist drop.
+//  6. Default DROP (clase 028: default policy drop).
 //
 // Notas de diseno:
-//   - NO incluye servicios (SSH/80/443) en forward: son para `input`
+//   - NO includes servicios (SSH/80/443) en forward: son para `input`
 //     (host local), no para trafico en transito entre interfaces. El
 //     operador agrega reglas de forward especificas con
 //     `nft add rule inet sm_forward forward ...` o via wizard futuro.
 //   - Comments `sm-fwd-*` (prefijo `fwd`) para distinguir de las reglas
 //     de `input` (`sm-*`) en `nft list` y en `inspect/`.
-func smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6 []string, geoip GeoIPData) string {
+func smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6 []string) string {
 	return fmt.Sprintf(`
 
 # Tabla Forward (sm_forward) — trafico en transito entre interfaces.
@@ -109,10 +111,13 @@ func smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6 []string, geoip GeoIPDa
 # ser entregados a el.
 # Referencia: clase 044 del curso Udemy (stateful + forward).
 # Default policy: drop (clase 028).
+add table inet sm_forward
+delete table inet sm_forward
+
 table inet sm_forward {
 
     # ── Sets (duplicados de table inet sm — nftables no comparte sets entre tablas) ──
-%s%s%s%s%s%s%s
+%s%s%s%s%s%s
     chain forward {
         type filter hook forward priority filter; policy drop;
 
@@ -138,15 +143,11 @@ table inet sm_forward {
         ip  saddr @sm_immune4 accept comment "sm-fwd-immune4"
         ip6 saddr @sm_immune6 accept comment "sm-fwd-immune6"
 
-        # 5 · Blacklist (antes de GeoIP)
+        # 5 · Blacklist
         ip  saddr @sm_blacklist4 drop comment "sm-fwd-blacklist4"
         ip6 saddr @sm_blacklist6 drop comment "sm-fwd-blacklist6"
 
-        # 6 · GeoIP allowlist (solo paises permitidos)
-        ip  saddr != @sm_geoallow4 drop comment "sm-fwd-geoallow4"
-        ip6 saddr != @sm_geoallow6 drop comment "sm-fwd-geoallow6"
-
-        # 7 · Default DROP
+        # 6 · Default DROP
         log prefix "SM-FWD-DROP-DEFAULT " drop comment "sm-fwd-default-drop"
     }
 }
@@ -157,6 +158,5 @@ table inet sm_forward {
 		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B)`, im6),
 		formatSet(SetBlacklist4, "ipv4_addr", `Bans manuales IPv4`, bl4),
 		formatSet(SetBlacklist6, "ipv6_addr", `Bans manuales IPv6`, bl6),
-		geoipSetsBlock(geoip),
 	)
 }
