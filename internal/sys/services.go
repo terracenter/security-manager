@@ -69,7 +69,9 @@ func isLoopbackAddr(localAddr string) bool {
 
 // parseSsLine parsea una línea de salida de `ss -tlnp` o `ss -ulnp`.
 // Formato esperado:
-//   LISTEN 0 128 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=1234,fd=6))
+//
+//	LISTEN 0 128 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=1234,fd=6))
+//
 // Filtra automáticamente direcciones loopback.
 // Retorna ServiceInfo con Proto temporalmente usado para IP origen (ignorar).
 func parseSsLine(line string, proto string) (ServiceInfo, bool) {
