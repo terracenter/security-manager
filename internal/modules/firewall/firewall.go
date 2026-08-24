@@ -83,7 +83,7 @@ func (f *Firewall) Menu() {
 		case "1":
 			f.applyBase()
 		case "2":
-			f.showStatus()
+			f.inspectCLI()
 		case "3":
 			f.resetTable()
 		case "4":
@@ -816,7 +816,11 @@ func buildAllowedEntries(selected []sys.ServiceInfo, tier string) []string {
 		if procName == "" {
 			procName = "?"
 		}
-		entry := fmt.Sprintf("%d | %s | %s | auto-detect | %s", svc.Port, svc.Proto, tier, time.Now().Format("2006-01-02"))
+		comment := "auto-detect"
+		if procName != "?" {
+			comment = "auto-detect:" + procName
+		}
+		entry := fmt.Sprintf("%d | %s | %s | %s | %s", svc.Port, svc.Proto, tier, comment, time.Now().Format("2006-01-02"))
 		entries = append(entries, entry)
 	}
 	return entries
@@ -857,7 +861,11 @@ func (f *Firewall) runSequentialWizard(services []sys.ServiceInfo) (bool, error)
 			tier = "GLOBAL"
 		}
 
-		entry := fmt.Sprintf("%d | %s | %s | auto-detect | %s", svc.Port, svc.Proto, tier, time.Now().Format("2006-01-02"))
+		comment := "auto-detect"
+		if procName != "?" {
+			comment = "auto-detect:" + procName
+		}
+		entry := fmt.Sprintf("%d | %s | %s | %s | %s", svc.Port, svc.Proto, tier, comment, time.Now().Format("2006-01-02"))
 		entries = append(entries, entry)
 	}
 
