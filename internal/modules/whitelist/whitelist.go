@@ -398,8 +398,6 @@ func removeByAddr(path, addr string) error {
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
 
-const crowdsecAllowlistFile = "/etc/crowdsec/allowlists/sm-ng.yaml"
-
 // syncFail2banIgnoreipLegacy ELIMINADO en Tarea 12.
 // Antes escribia IPs intocables a /etc/fail2ban/jail.d/sm-ng-whitelist.conf
 // y recargaba fail2ban-client. Reemplazado por crowdsec.SyncAllowlist en
@@ -433,11 +431,6 @@ func SyncImmuneTier() error {
 	fmt.Println(i18n.T("whitelist.sync.crowdsec_missing"))
 	fmt.Println(i18n.T("whitelist.sync.crowdsec_hint"))
 	return nil
-}
-
-func mustEntries(path string) []infra.ACLEntry {
-	e, _ := infra.ReadACLEntries(path)
-	return e
 }
 
 // RunAction implementa modules.CLIModule para modo no interactivo.
