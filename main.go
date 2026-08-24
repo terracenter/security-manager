@@ -22,7 +22,7 @@ import (
 )
 
 var Version = "dev"
-var RepoURL = "https://github.com/terracenter/security-manager-ng"
+var RepoURL = "https://github.com/terracenter/security-manager"
 
 type sysStatus struct {
 	smActive     bool
