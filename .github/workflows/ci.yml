@@ -28,7 +28,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
 
       - name: Verificar que el código compila
@@ -65,7 +65,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
 
       - name: Fuzz parseWireGuardPortContent
@@ -86,7 +86,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
 
       - name: gosec (security scanner)
