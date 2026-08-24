@@ -108,7 +108,7 @@ func TestSyncAllowlist_WithMockCscli(t *testing.T) {
 	}
 
 	mock := newMockCscliRunner()
-	mock.AllowlistAdd("sm-immune", "10.0.0.1") // pre-existente (idempotente)
+	_ = mock.AllowlistAdd("sm-immune", "10.0.0.1") // pre-existente (idempotente)
 
 	if err := syncAllowlistWith(mock, []string{immuneFile}); err != nil {
 		t.Fatalf("syncAllowlistWith: %v", err)

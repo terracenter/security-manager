@@ -28,8 +28,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
+
+      - name: gofmt (formato estandar)
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "Archivos sin formatear:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
 
       - name: Verificar que el código compila
         run: go build ./...
@@ -65,7 +74,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
 
       - name: Fuzz parseWireGuardPortContent
@@ -86,7 +95,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.4"
+          go-version: "1.26.7"
           cache: true
 
       - name: gosec (security scanner)
@@ -101,22 +110,11 @@ jobs:
           exit 0
 
       - name: golangci-lint (linter agregado)
-        # Política: falla el job SOLO por issues que NO sean ruido conocido
-        # (errcheck en defer f.Close/os.Remove, unused functions). Para
-        # endurecer: auditar issues restantes en sesión dedicada.
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-          golangci-lint run --timeout=3m \
-            --disable=errcheck,unused \
-            ./... 2>&1 | tee golangci-report.txt
-          exit 0
+          golangci-lint run --timeout=3m ./...
 
       - name: govulncheck (dependencias vulnerables)
-        # Política: reportar siempre, no romper el job. Las 2 vulns actuales
-        # en stdlib Go 1.24.4 (GO-2025-3956, GO-2026-4602) son deuda técnica
-        # documentada en Planes/Security-Manager-NG/historico_y_reportes/.
-        # Remediación: subir go-version a 1.25.x cuando se decida.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./... 2>&1 | tee govulncheck-report.txt
-          exit 0
+          govulncheck ./...

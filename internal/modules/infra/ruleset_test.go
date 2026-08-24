@@ -32,14 +32,14 @@ func TestGenerateRulesetTwoTiers(t *testing.T) {
 	if geoDrop < 0 {
 		t.Fatal("no se encontró el geoallow drop (stage 7)")
 	}
-	if !(pos80 < geoDrop) {
+	if pos80 >= geoDrop {
 		t.Errorf("puerto 80 debe ir ANTES del geoallow (global Let's Encrypt): 80=%d geo=%d", pos80, geoDrop)
 	}
-	if !(pos443 > geoDrop) {
+	if pos443 <= geoDrop {
 		t.Errorf("puerto 443 debe ir DESPUÉS del geoallow (country-restricted): 443=%d geo=%d", pos443, geoDrop)
 	}
 	wlAccept := strings.Index(rs, "ip  saddr @sm_whitelist4 accept")
-	if !(wlAccept < geoDrop) {
+	if wlAccept >= geoDrop {
 		t.Errorf("whitelist accept (stage 6) debe ir antes del geoallow (stage 7)")
 	}
 }
@@ -214,7 +214,7 @@ func TestGenerateRulesetIncludesSmNatTable(t *testing.T) {
 	if posSM < 0 || posSMNat < 0 {
 		t.Fatal("no se encontro tabla inet sm o inet sm_nat")
 	}
-	if !(posSM < posSMNat) {
+	if posSM >= posSMNat {
 		t.Errorf("tabla inet sm debe ir ANTES de sm_nat: sm=%d sm_nat=%d", posSM, posSMNat)
 	}
 }
@@ -262,10 +262,10 @@ func TestGenerateRuleset_IncludesForwardChain(t *testing.T) {
 	if posSM < 0 || posSMNat < 0 || posSMFwd < 0 {
 		t.Fatal("no se encontro alguna de las 3 tablas esperadas")
 	}
-	if !(posSM < posSMNat) {
+	if posSM >= posSMNat {
 		t.Errorf("tabla inet sm debe ir ANTES de sm_nat: sm=%d sm_nat=%d", posSM, posSMNat)
 	}
-	if !(posSMNat < posSMFwd) {
+	if posSMNat >= posSMFwd {
 		t.Errorf("tabla inet sm_nat debe ir ANTES de sm_forward: sm_nat=%d sm_forward=%d", posSMNat, posSMFwd)
 	}
 }

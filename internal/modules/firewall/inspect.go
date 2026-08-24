@@ -401,7 +401,7 @@ func buildRecommendation(patterns []PatternDetected, chains map[string]chainInfo
 	var rec strings.Builder
 	rec.WriteString(i18n.T("inspect.recommendation.header"))
 	for _, p := range patterns {
-		rec.WriteString(fmt.Sprintf(i18n.T("inspect.recommendation.item"), p.Name, p.Confidence, p.Description))
+		fmt.Fprintf(&rec, i18n.T("inspect.recommendation.item"), p.Name, p.Confidence, p.Description)
 	}
 
 	// Recomendaciones especificas.

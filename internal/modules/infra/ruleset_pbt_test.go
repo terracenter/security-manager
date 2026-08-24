@@ -163,10 +163,10 @@ func testProperty_TablesOrder(t *rapid.T) {
 	if posSMFwd < 0 {
 		t.Fatal("no se encontro 'table inet sm_forward {'")
 	}
-	if !(posSM < posSMNat) {
+	if posSM >= posSMNat {
 		t.Fatalf("orden incorrecto: sm(%d) >= sm_nat(%d)", posSM, posSMNat)
 	}
-	if !(posSMNat < posSMFwd) {
+	if posSMNat >= posSMFwd {
 		t.Fatalf("orden incorrecto: sm_nat(%d) >= sm_forward(%d)", posSMNat, posSMFwd)
 	}
 }

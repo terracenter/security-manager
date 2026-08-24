@@ -84,10 +84,10 @@ func FuzzParseWireGuardPortContent(f *testing.F) {
 
 func TestParseOpenVPNServerContent_Basics(t *testing.T) {
 	tests := []struct {
-		name     string
-		content  string
-		wantOK   bool
-		wantPort int
+		name      string
+		content   string
+		wantOK    bool
+		wantPort  int
 		wantProto string
 	}{
 		{"empty", "", false, 0, ""},

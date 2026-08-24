@@ -89,7 +89,7 @@ func (w *Whitelist) Menu() {
 		case "2":
 			w.tierMenu(tierB())
 		case "3":
-			SyncImmuneTier()
+			_ = SyncImmuneTier()
 		case "0":
 			return
 		default:
@@ -206,7 +206,7 @@ func (w *Whitelist) persist(t tier, addr string) {
 	}
 	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 }
 
@@ -297,7 +297,7 @@ func (w *Whitelist) deleteIP(t tier) {
 	}
 	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 }
 
@@ -375,7 +375,7 @@ func appendEntry(path string, e infra.ACLEntry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = fmt.Fprintln(f, e.String())
 	return err
 }
@@ -397,8 +397,6 @@ func removeByAddr(path, addr string) error {
 	}
 	return os.WriteFile(path, []byte(strings.Join(updated, "\n")+"\n"), 0o640)
 }
-
-const crowdsecAllowlistFile = "/etc/crowdsec/allowlists/sm-ng.yaml"
 
 // syncFail2banIgnoreipLegacy ELIMINADO en Tarea 12.
 // Antes escribia IPs intocables a /etc/fail2ban/jail.d/sm-ng-whitelist.conf
@@ -435,11 +433,6 @@ func SyncImmuneTier() error {
 	return nil
 }
 
-func mustEntries(path string) []infra.ACLEntry {
-	e, _ := infra.ReadACLEntries(path)
-	return e
-}
-
 // RunAction implementa modules.CLIModule para modo no interactivo.
 //
 //	add <ip> --tier A|B [--responsable R] [--proposito P] [--vencimiento YYYY-MM-DD]
@@ -458,7 +451,7 @@ func (w *Whitelist) RunAction(action string, args ...string) bool {
 	case "del", "delete", "eliminar":
 		return w.cliDel(args)
 	case "sync", "sincronizar":
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 		return true
 	default:
 		fmt.Fprintf(os.Stderr, i18n.T("whitelist.cli.unknown_action")+" %s\n", action)
@@ -506,7 +499,7 @@ func (w *Whitelist) cliAdd(args []string) bool {
 	}
 	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 	return true
 }
@@ -579,7 +572,7 @@ func (w *Whitelist) cliDel(args []string) bool {
 	}
 	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 	return true
 }

@@ -88,7 +88,7 @@ func LoadGeoIPData() (GeoIPData, error) {
 	if err != nil {
 		return GeoIPData{}, fmt.Errorf("leer %s: %w", AllowedCountriesFile, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var countries []CountrySet
 	sc := bufio.NewScanner(f)
@@ -114,7 +114,7 @@ func ReadLines(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var lines []string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -156,7 +156,7 @@ func ReadACLEntries(path string) ([]ACLEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var entries []ACLEntry
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -206,7 +206,7 @@ func AppendACLEntry(path string, e ACLEntry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	line := fmt.Sprintf("%s | %s | %s | %s\n",
 		e.Addr,
 		e.Responsable,
@@ -281,7 +281,7 @@ func ReadPort80Option() (bool, bool) {
 	if err != nil {
 		return false, false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -310,7 +310,7 @@ func WritePort80Option(enabled bool) error {
 				lines = append(lines, l)
 			}
 		}
-		f.Close()
+		_ = f.Close()
 	}
 	lines = append(lines, "port80_global="+val)
 	return os.WriteFile(OptionsFile, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
@@ -354,7 +354,7 @@ func parseWireGuardPortContent(content string) int {
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
 				var port int
-				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &port)
+				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &port)
 				return port
 			}
 		}
@@ -400,7 +400,7 @@ func parseOpenVPNServerContent(content string) (OVPNRule, bool) {
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "port ") {
-			fmt.Sscanf(line[5:], "%d", &port)
+			_, _ = fmt.Sscanf(line[5:], "%d", &port)
 		}
 		if strings.HasPrefix(line, "proto ") {
 			// Normalizar a tcp/udp: OpenVPN admite udp6, tcp4, tcp-server, tcp4-server, etc.
@@ -498,7 +498,7 @@ func ReadPortEntries(path string) ([]PortEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var entries []PortEntry
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -561,7 +561,7 @@ func AddPortEntry(entry PortEntry) error {
 	if err != nil {
 		return fmt.Errorf("abrir %s: %w", AllowedPortsFile, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = fmt.Fprintln(f, entry.String())
 	return err
 }
@@ -602,10 +602,10 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) s
 		sb.WriteString("        tcp dport 80 accept comment \"LetsEncrypt-HTTP01\"   # Let's Encrypt HTTP-01 (global - ACME valida desde cualquier pais)\n")
 	}
 	for _, port := range svc.WireGuardPorts {
-		sb.WriteString(fmt.Sprintf("        udp dport %d accept comment \"WireGuard-auto\"   # WireGuard (auto-detectado)\n", port))
+		fmt.Fprintf(&sb, "        udp dport %d accept comment \"WireGuard-auto\"   # WireGuard (auto-detectado)\n", port)
 	}
 	for _, rule := range svc.OpenVPNRules {
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment \"OpenVPN-auto\"   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment \"OpenVPN-auto\"   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port)
 	}
 	for _, pe := range ports {
 		comment := pe.Comment
@@ -618,7 +618,7 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) s
 		if len(slug) > 32 {
 			slug = slug[:32]
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -640,7 +640,7 @@ func geoRestrictedServicesBlock(ports []PortEntry) string {
 		if len(slug) > 32 {
 			slug = slug[:32]
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -650,8 +650,8 @@ func crowdsecSetsBlock() string {
 	if !crowdsec.IsInstalled() {
 		return ""
 	}
-	s4 := fmt.Sprintf("\n    set crowdsec-blacklists {\n        type ipv4_addr\n        flags interval, timeout\n    }\n")
-	s6 := fmt.Sprintf("\n    set crowdsec-blacklists6 {\n        type ipv6_addr\n        flags interval, timeout\n    }\n")
+	s4 := "\n    set crowdsec-blacklists {\n        type ipv4_addr\n        flags interval, timeout\n    }\n"
+	s6 := "\n    set crowdsec-blacklists6 {\n        type ipv6_addr\n        flags interval, timeout\n    }\n"
 	return s4 + s6
 }
 
@@ -919,7 +919,7 @@ func EnsureSmNftPersistence() error {
 	if err != nil {
 		return fmt.Errorf("no se pudo escribir %s — persistencia manual requerida: %w", nftConf, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.WriteString("\n# Security Manager NG\n" + includeLine + "\n"); err != nil {
 		return fmt.Errorf("no se pudo escribir línea de persistencia en %s: %w", nftConf, err)
 	}

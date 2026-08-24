@@ -17,12 +17,12 @@ func resetState(t *testing.T) {
 func cleanEnv(t *testing.T) {
 	t.Helper()
 	oldEnv := os.Getenv("SM_NG_LANG")
-	os.Unsetenv("SM_NG_LANG")
+	_ = os.Unsetenv("SM_NG_LANG")
 	t.Cleanup(func() {
 		if oldEnv != "" {
-			os.Setenv("SM_NG_LANG", oldEnv)
+			_ = os.Setenv("SM_NG_LANG", oldEnv)
 		} else {
-			os.Unsetenv("SM_NG_LANG")
+			_ = os.Unsetenv("SM_NG_LANG")
 		}
 	})
 }
@@ -42,7 +42,7 @@ func TestLoad_DefaultLang(t *testing.T) {
 func TestLoad_FromEnv(t *testing.T) {
 	resetState(t)
 	cleanEnv(t)
-	os.Setenv("SM_NG_LANG", "EN") // mayusculas para verificar lowercase
+	_ = os.Setenv("SM_NG_LANG", "EN") // mayusculas para verificar lowercase
 
 	if err := Load(); err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -78,7 +78,7 @@ func TestT_FallbackToDefault(t *testing.T) {
 	mu.Lock()
 	delete(cache["en"], "menu.title")
 	mu.Unlock()
-	SetLang("en")
+	_ = SetLang("en")
 
 	got := T("menu.title")
 	want := T("es.menu.title")

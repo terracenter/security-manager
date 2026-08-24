@@ -305,7 +305,7 @@ func (g *GeoIP) applyGeoIPCore() {
 		fmt.Printf("  ERROR escribiendo ruleset: %v\n", err)
 		return
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	fmt.Println("  Validando sintaxis (nft -c)...")
 	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()
@@ -430,7 +430,7 @@ func loadCountries() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var countries []string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -454,7 +454,7 @@ func saveCountries(countries []string) error {
 
 func downloadZone(url, dest string) error {
 	tmp := dest + ".tmp"
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 
 	out, err := exec.Command(
 		"curl", "-fsSL", "--retry", "2", "--max-time", "30", "-o", tmp, url,

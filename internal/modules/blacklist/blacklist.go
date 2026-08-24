@@ -172,7 +172,7 @@ func lookupCountry(ip string) string {
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return ""
 	}
@@ -326,7 +326,7 @@ func appendToFile(path, entry string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = fmt.Fprintln(f, entry)
 	return err
 }
