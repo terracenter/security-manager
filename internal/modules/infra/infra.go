@@ -806,7 +806,7 @@ table inet sm {
 		geoipRulesBlock(geoip),
 		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
-	) + smNatTableTemplate + smForwardTableTemplate
+	) + smNatTableTemplate + smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6, geoip)
 }
 
 func formatSet(name, addrType, _ string, elements []string) string {
