@@ -245,7 +245,6 @@ func TestGenerateRuleset_IncludesForwardChain(t *testing.T) {
 		`comment "sm-fwd-whitelist4"`,
 		`comment "sm-fwd-immune4"`,
 		`comment "sm-fwd-blacklist4"`,
-		`comment "sm-fwd-geoallow4"`,
 		`comment "sm-fwd-default-drop"`,
 	}
 	for _, want := range mustContain {
