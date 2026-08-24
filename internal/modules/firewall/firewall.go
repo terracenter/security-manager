@@ -239,7 +239,7 @@ func (f *Firewall) applyBase() {
 		f.logger.Error("No se pudo escribir el ruleset.", fmt.Sprintf("%v", err))
 		return
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	fmt.Println(i18n.T("fw.apply.validating"))
 	out, err := exec.Command("nft", "-c", "-f", tmpFile).CombinedOutput()

@@ -415,7 +415,7 @@ func (s *SSH) applyBase(opts sshBaseOpts) {
 	if err := os.WriteFile(baseConf, []byte(content), 0o640); err != nil {
 		fmt.Fprintf(os.Stderr, i18n.T("ssh.apply.err_write"), baseConf, err)
 		if _, err := os.Stat(backupFile); err == nil {
-			os.Rename(backupFile, baseConf)
+			_ = os.Rename(backupFile, baseConf)
 			fmt.Println(i18n.T("ssh.apply.restored"))
 		}
 		return
@@ -426,14 +426,14 @@ func (s *SSH) applyBase(opts sshBaseOpts) {
 		fmt.Fprint(os.Stderr, i18n.T("ssh.apply.err_sshd_test"))
 		if err := os.Remove(baseConf); err == nil {
 			if _, err := os.Stat(backupFile); err == nil {
-				os.Rename(backupFile, baseConf)
+				_ = os.Rename(backupFile, baseConf)
 				fmt.Println(i18n.T("ssh.apply.restored"))
 			}
 		}
 		return
 	}
 
-	os.Remove(backupFile)
+	_ = os.Remove(backupFile)
 
 	s.applyBanners()
 	sshdReload()

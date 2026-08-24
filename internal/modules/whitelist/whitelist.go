@@ -89,7 +89,7 @@ func (w *Whitelist) Menu() {
 		case "2":
 			w.tierMenu(tierB())
 		case "3":
-			SyncImmuneTier()
+			_ = SyncImmuneTier()
 		case "0":
 			return
 		default:
@@ -206,7 +206,7 @@ func (w *Whitelist) persist(t tier, addr string) {
 	}
 	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 }
 
@@ -297,7 +297,7 @@ func (w *Whitelist) deleteIP(t tier) {
 	}
 	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 }
 
@@ -375,7 +375,7 @@ func appendEntry(path string, e infra.ACLEntry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, err = fmt.Fprintln(f, e.String())
 	return err
 }
@@ -458,7 +458,7 @@ func (w *Whitelist) RunAction(action string, args ...string) bool {
 	case "del", "delete", "eliminar":
 		return w.cliDel(args)
 	case "sync", "sincronizar":
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 		return true
 	default:
 		fmt.Fprintf(os.Stderr, i18n.T("whitelist.cli.unknown_action")+" %s\n", action)
@@ -506,7 +506,7 @@ func (w *Whitelist) cliAdd(args []string) bool {
 	}
 	fmt.Printf(i18n.T("whitelist.persist.added")+" %s → %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 	return true
 }
@@ -579,7 +579,7 @@ func (w *Whitelist) cliDel(args []string) bool {
 	}
 	fmt.Printf(i18n.T("whitelist.del.removed")+" %s de %s\n", addr, setName)
 	if t.immune {
-		SyncImmuneTier()
+		_ = SyncImmuneTier()
 	}
 	return true
 }

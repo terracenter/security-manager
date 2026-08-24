@@ -280,7 +280,7 @@ func main() {
 	}
 
 	logger := sys.NewLogger()
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	if len(os.Args) > 1 {
 		os.Exit(handleCLI(os.Args[1:], logger))

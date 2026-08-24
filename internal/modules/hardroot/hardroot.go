@@ -82,7 +82,7 @@ func (h *HardRoot) Reset() {
 				}
 				_ = os.Remove(sshdConfigBackup)
 			}
-			os.Remove(tmpFile)
+			_ = os.Remove(tmpFile)
 		}
 	} else if !os.IsNotExist(err) {
 		fmt.Printf(i18n.T("hardroot.reset.warn_no_sshd_backup_read")+" %v\n", err)
@@ -321,7 +321,7 @@ func (h *HardRoot) configureSudoers() {
 		fmt.Printf(i18n.T("hardroot.err.generic")+" %v\n", err)
 		return
 	}
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	out, err := exec.Command("visudo", "-c", "-f", tmpFile).CombinedOutput()
 	if err != nil {
@@ -512,7 +512,7 @@ func (h *HardRoot) RunAction(action string, args ...string) bool {
 			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.generic")+" %v\n", err)
 			return false
 		}
-		defer os.Remove(tmpFile)
+		defer func() { _ = os.Remove(tmpFile) }()
 		if out, err := exec.Command("visudo", "-c", "-f", tmpFile).CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, i18n.T("hardroot.err.visudo_failed")+" %s\n", strings.TrimSpace(string(out)))
 			return false
