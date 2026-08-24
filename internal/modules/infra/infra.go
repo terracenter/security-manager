@@ -602,10 +602,10 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) s
 		sb.WriteString("        tcp dport 80 accept comment \"LetsEncrypt-HTTP01\"   # Let's Encrypt HTTP-01 (global - ACME valida desde cualquier pais)\n")
 	}
 	for _, port := range svc.WireGuardPorts {
-		sb.WriteString(fmt.Sprintf("        udp dport %d accept comment \"WireGuard-auto\"   # WireGuard (auto-detectado)\n", port))
+		fmt.Fprintf(&sb, "        udp dport %d accept comment \"WireGuard-auto\"   # WireGuard (auto-detectado)\n", port)
 	}
 	for _, rule := range svc.OpenVPNRules {
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment \"OpenVPN-auto\"   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment \"OpenVPN-auto\"   # OpenVPN (auto-detectado)\n", rule.Proto, rule.Port)
 	}
 	for _, pe := range ports {
 		comment := pe.Comment
@@ -618,7 +618,7 @@ func globalExceptionsBlock(svc GlobalServices, port80 bool, ports []PortEntry) s
 		if len(slug) > 32 {
 			slug = slug[:32]
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -640,7 +640,7 @@ func geoRestrictedServicesBlock(ports []PortEntry) string {
 		if len(slug) > 32 {
 			slug = slug[:32]
 		}
-		sb.WriteString(fmt.Sprintf("        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment))
+		fmt.Fprintf(&sb, "        %s dport %d accept comment %q   # %s\n", pe.Proto, pe.Port, slug, comment)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -650,8 +650,8 @@ func crowdsecSetsBlock() string {
 	if !crowdsec.IsInstalled() {
 		return ""
 	}
-	s4 := fmt.Sprintf("\n    set crowdsec-blacklists {\n        type ipv4_addr\n        flags interval, timeout\n    }\n")
-	s6 := fmt.Sprintf("\n    set crowdsec-blacklists6 {\n        type ipv6_addr\n        flags interval, timeout\n    }\n")
+	s4 := "\n    set crowdsec-blacklists {\n        type ipv4_addr\n        flags interval, timeout\n    }\n"
+	s6 := "\n    set crowdsec-blacklists6 {\n        type ipv6_addr\n        flags interval, timeout\n    }\n"
 	return s4 + s6
 }
 
