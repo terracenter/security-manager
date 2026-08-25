@@ -325,3 +325,37 @@ AGPLv3 — ver [`LICENSE`](LICENSE). Este software es open source; no se vende e
 modelo de sostenibilidad es soporte y consultoría, no venta de licencias. Ver también
 [`NOTICE`](NOTICE), [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) y
 [`SECURITY.md`](SECURITY.md) para reportar vulnerabilidades.
+
+## Git Hooks
+
+This repository includes a pre‑commit hook in  that enforces the use of  (or ) for git/terminal/fs operations and Carga nodos y aristas del vault Obsidian en un grafo Kuzu consultable.
+
+Usage:
+  vault-graph [command]
+
+Available Commands:
+  backlinks   Obtiene los wikilinks entrantes a una nota
+  broken      Lista wikilinks no resueltos
+  completion  Generate the autocompletion script for the specified shell
+  enrich      Enriquece nodos con resúmenes LLM (Ollama)
+  help        Help about any command
+  neighbors   Obtiene los nodos vecinos de una nota
+  orphans     Lista notas sin conexiones (sin ENLAZA entrante ni saliente)
+  path        Encuentra el camino más corto entre dos notas
+  query       Ejecuta una query Cypher read-only contra Kuzu
+  stats       Muestra estadísticas del grafo
+  sync        Carga o sincroniza el vault en el grafo Kuzu
+
+Flags:
+      --config string   ruta al archivo de configuración .env
+      --format string   formato de salida: json|table (default "table")
+  -h, --help            help for vault-graph
+
+Use "vault-graph [command] --help" for more information about a command. for vault queries, as required by the LEY PRINCIPAL.
+
+To activate the hook, run:
+
+
+
+(This setting is local to your clone and does not affect the repository history.)
+

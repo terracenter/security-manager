@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# pre-commit hook to enforce use of rtk and vg wrappers
+# Forbid raw git, find, ls, rg, scp, ssh, docker compose, go build without rtk prefix
+
+FORBIDDEN_PATTERN='\b(git|find|ls|rg|scp|ssh|docker\s+compose|go\s+build)\b'
+
+# Get the diff of staged changes
+# We'll examine each line that represents added (+) content.
+# For each such line, strip the leading + and then check.
+# We ignore lines that are purely contextual (starting with a space).
+# We also skip lines that are comments (after stripping the leading +, the line starts with #).
+while IFS= read -r line; do
+    # Skip empty lines
+    [ -z "$line" ] && continue
+    # Determine first character
+    first="${line:0:1}"
+    case "$first" in
+        '+')
+            content="${line:1}"
+            # Skip if content is empty
+            [ -z "$content" ] && continue
+            # Skip comment lines
+            case "$content" in
+                '#'* ) continue ;;
+            esac
+            # Check for forbidden pattern
+            if echo "$content" | grep -qE "$FORBIDDEN_PATTERN"; then
+                # If line also contains rtk, it's ok
+                if ! echo "$content" | grep -q "rtk"; then
+                    echo "Error: Found raw command usage without rtk wrapper."
+                    echo "Line: $content"
+                    echo "Please use rtk <subcommand> or rtk proxy <command> for git/terminal/fs operations."
+                    echo "For vault queries, use vg query ..."
+                    exit 1
+                fi
+            fi
+            ;;
+        *)
+            # Skip removed lines, contextual lines, and any other lines (like diff header)
+            ;;
+    esac
+done < <(git diff --cached --unified=0)
+
+exit 0
