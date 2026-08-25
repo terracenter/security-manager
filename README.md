@@ -40,6 +40,10 @@ sudo security-manager-ng geoip add VE CO PE
 
 sudo security-manager-ng blacklist add 198.51.100.7
 
+sudo security-manager-ng forward add --src 172.17.0.0/16 --dst 1.1.1.1/32 --action drop --comment "bloqueo exfil"
+sudo security-manager-ng forward add --src 172.17.0.0/16 --action accept --comment "permitir docker"
+sudo security-manager-ng forward list
+
 sudo security-manager-ng firewall estado
 sudo security-manager-ng ssh estado
 
@@ -112,6 +116,14 @@ Todo lo que no se acepta explícitamente cae en `policy drop`.
 > **Orden crítico:** blacklist (5) antes que whitelist (6); whitelist (6) antes que GeoIP (7).
 
 Documentación completa del pipeline: [`docs/arquitectura-pipeline-nftables.md`](docs/arquitectura-pipeline-nftables.md)
+
+### Tránsito entre interfaces — tabla `inet sm_forward`
+
+Tráfico que **pasa a través** del host (routing, containers Docker, VPN) se filtra en una
+tabla separada, `inet sm_forward`, con su propio motor de reglas de usuario estilo MikroTik
+(`security-manager-ng forward add/list/del/move`, primera coincidencia gana). Documentación
+completa, incluyendo por qué coexiste con las tablas `ip`/`ip6` que Docker administra vía
+`iptables-nft`: [`docs/arquitectura-pipeline-forward.md`](docs/arquitectura-pipeline-forward.md)
 
 ### Sets nativos (reemplazan ipset)
 
@@ -271,8 +283,9 @@ producción sin revisar el estado de esa validación primero.
 
 - **Módulos completos** (menú interactivo + CLI): `firewall` (ruleset nftables declarativo +
   safe-apply), `whitelist` (Tier A/B, sincroniza CrowdSec y fail2ban), `geoip` (allowlist por
-  país vía ipdeny.com), `blacklist` (bans manuales IPv4/IPv6), `hardroot` (hardening root +
-  sudoers), `ssh` (hardening `sshd_config.d`), `fail2ban` (monitoreo de solo lectura).
+  país vía ipdeny.com), `blacklist` (bans manuales IPv4/IPv6), `forward` (motor de reglas
+  estilo MikroTik, SQLite embebido), `hardroot` (hardening root + sudoers), `ssh` (hardening
+  `sshd_config.d`), `fail2ban` (monitoreo de solo lectura).
 - **CrowdSec**: integrado como backend de detección de amenazas — prerequisito opcional
   instalado por distro, set `crowdsec-blacklists` en el ruleset nftables, sincronización de
   allowlist desde whitelist Tier B. Aún no expuesto como módulo propio de menú/CLI (esa es una
