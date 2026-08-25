@@ -22,39 +22,12 @@ exclusivos de `input`.
 
 ---
 
-## 📈 Recorrido del paquete (Mermaid)
+## 📈 Figura 1: Topología lógica del pipeline
 
-```mermaid
-graph TD
-    PKT["📥 Paquete en tránsito (routing / Docker / VPN)"]
-    CHAIN["chain forward<br/>hook forward · priority filter · policy DROP"]
+![Figura 1: Pipeline de forward de la tabla inet sm_forward](diagramas/sm-ng-pipeline-forward.png)
 
-    PKT --> CHAIN
-    CHAIN --> S1{"1 · ct state<br/>established,related?"}
-    S1 -->|sí| ACC1["ACCEPT (fast-path)"]
-    S1 -->|no| S2{"2 · ct state invalid?"}
-    S2 -->|sí| D2["DROP"]
-    S2 -->|no| ANTI{"3 · ANTIRECON<br/>XMAS/NULL/FIN+SYN/SYN+RST?"}
-    ANTI -->|match| DANTI["limit rate → log SM-FWD-ANTIRECON → DROP"]
-    ANTI -->|no match| WL{"4 · Whitelist Tier A<br/>+ Immune Tier B?"}
-    WL -->|match| AWL["ACCEPT (bypass total)"]
-    WL -->|no match| BL{"5 · BLACKLIST<br/>@sm_blacklist4/6?"}
-    BL -->|match| DBL["DROP"]
-    BL -->|no match| USR{"5b · Reglas de usuario<br/>(T-4.10, first-match-wins)"}
-    USR -->|match accept| AUSR["ACCEPT"]
-    USR -->|match drop| DUSR["DROP"]
-    USR -->|sin match| DEF["6 · POLICY DROP · log SM-FWD-DROP-DEFAULT"]
-
-    style CHAIN fill:#1f3864,color:#fff
-    style ACC1 fill:#d5e8d4,stroke:#82b366
-    style AWL fill:#d5e8d4,stroke:#82b366
-    style AUSR fill:#d5e8d4,stroke:#82b366
-    style D2 fill:#f8cecc,stroke:#b85450
-    style DANTI fill:#f8cecc,stroke:#b85450
-    style DBL fill:#f8cecc,stroke:#b85450
-    style DUSR fill:#f8cecc,stroke:#b85450
-    style DEF fill:#b85450,color:#fff
-```
+> Fuente editable: `diagramas/sm-ng-pipeline-forward.drawio` (draw.io). Exportar PNG con:
+> `DISPLAY=:0 drawio -x -f png -b 15 --width 1100 -o diagramas/sm-ng-pipeline-forward.png diagramas/sm-ng-pipeline-forward.drawio`
 
 ---
 
