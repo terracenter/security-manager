@@ -25,3 +25,8 @@ versionado según [Semantic Versioning](https://semver.org/lang/es/).
   ni instalador firmado, conservando el fingerprint de la llave y sus dos fuentes de descarga.
 - `.github/workflows/dev-release.yml` / `script-dev/install.sh`: quitadas las menciones al
   instalador estable de `main` que no existe.
+- `docs/arquitectura-pipeline-forward.md` (nuevo): documenta la chain `forward` de
+  `sm_forward` (fast-path, antirecon, whitelist/immune, blacklist, reglas de usuario T-4.10,
+  default-drop) y la coexistencia con las tablas `ip`/`ip6` que administra Docker vía
+  `iptables-nft`. `README.md`/`README_en.md`: agregado el módulo `forward` al Quickstart y a
+  la lista de módulos completos.
