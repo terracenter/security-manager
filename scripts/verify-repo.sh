@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_PATH="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
-if [[ ! -d "$REPO_PATH/.git" ]]; then
+if [[ -z "$REPO_PATH" ]] || ! git -C "$REPO_PATH" rev-parse --git-dir >/dev/null 2>&1; then
     echo "ERROR: no es un repo git: $REPO_PATH" >&2
     exit 1
 fi
