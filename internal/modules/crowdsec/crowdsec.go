@@ -27,7 +27,7 @@ func New(logger *sys.SMLogger) *Crowdsec {
 // Order define la posicion en el menu principal. Posicionado DESPUES de
 // los modulos de firewall/conectividad (1-6) y ANTES de los de hardening
 // (8-9). Posicion 7 es razonable para "servicios externos".
-func (c *Crowdsec) Order() int { return 7 }
+func (c *Crowdsec) Order() int { return 8 }
 
 // Name es el titulo visible en el menu. NO migra a i18n todavia — eso
 // es Subtarea D. Literal hardcoded es aceptable en este punto.

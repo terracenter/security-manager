@@ -126,7 +126,7 @@ func New() *SSH {
 	return &SSH{scanner: bufio.NewScanner(os.Stdin)}
 }
 
-func (s *SSH) Order() int   { return 6 }
+func (s *SSH) Order() int   { return 7 }
 func (s *SSH) Name() string { return "SSH — hardening sshd_config" }
 
 func (s *SSH) Menu() {

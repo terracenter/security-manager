@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/terracenter/security-manager-ng/internal/store"
 )
 
 func TestGenerateRulesetTwoTiers(t *testing.T) {
@@ -297,6 +299,90 @@ func TestGenerateRulesetForwardChain_NoServices(t *testing.T) {
 		if strings.Contains(fwdBlock, bad) {
 			t.Errorf("chain forward contiene %q (no debe: forward es para transito, no para servicios del host)", bad)
 		}
+	}
+}
+
+// T-4.10: reglas de usuario del motor forward estilo MikroTik.
+
+func TestSmForwardTableTemplate_UserRules_InsertedBetweenBlacklistAndDefault(t *testing.T) {
+	rules := []store.ForwardRule{
+		{ID: 1, Position: 1, Src: "172.17.0.0/16", Action: "drop"},
+	}
+	rs := smForwardTableTemplate(nil, nil, nil, nil, nil, nil, rules)
+
+	posBlacklist := strings.Index(rs, `comment "sm-fwd-blacklist6"`)
+	posUser := strings.Index(rs, `comment "sm-fwd-user-1"`)
+	posDefault := strings.Index(rs, `comment "sm-fwd-default-drop"`)
+	if posBlacklist < 0 || posUser < 0 || posDefault < 0 {
+		t.Fatal("no se encontraron los 3 marcadores esperados (blacklist6, user-1, default-drop)")
+	}
+	if posBlacklist >= posUser || posUser >= posDefault {
+		t.Errorf("orden incorrecto: blacklist=%d user=%d default=%d (esperaba blacklist < user < default)",
+			posBlacklist, posUser, posDefault)
+	}
+}
+
+func TestSmForwardTableTemplate_UserRules_OrderPreserved(t *testing.T) {
+	rules := []store.ForwardRule{
+		{ID: 1, Position: 1, Src: "10.0.0.0/8", Action: "accept"},
+		{ID: 2, Position: 2, Src: "10.0.0.0/8", Action: "drop"},
+	}
+	rs := smForwardTableTemplate(nil, nil, nil, nil, nil, nil, rules)
+
+	posAccept := strings.Index(rs, `comment "sm-fwd-user-1"`)
+	posDrop := strings.Index(rs, `comment "sm-fwd-user-2"`)
+	if posAccept < 0 || posDrop < 0 {
+		t.Fatal("no se encontraron las 2 reglas de usuario esperadas")
+	}
+	if posAccept >= posDrop {
+		t.Errorf("orden no preservado: accept (id=1) debe ir antes que drop (id=2): accept=%d drop=%d", posAccept, posDrop)
+	}
+}
+
+func TestSmForwardTableTemplate_UserRules_WildcardDst(t *testing.T) {
+	rules := []store.ForwardRule{
+		{ID: 5, Position: 1, Src: "192.168.1.0/24", Action: "accept"},
+	}
+	rs := smForwardTableTemplate(nil, nil, nil, nil, nil, nil, rules)
+
+	lineStart := strings.Index(rs, `ip  saddr 192.168.1.0/24`)
+	if lineStart < 0 {
+		lineStart = strings.Index(rs, `ip saddr 192.168.1.0/24`)
+	}
+	if lineStart < 0 {
+		t.Fatal("no se encontro la clausula src de la regla id=5")
+	}
+	lineEnd := strings.Index(rs[lineStart:], "\n")
+	line := rs[lineStart : lineStart+lineEnd]
+	if strings.Contains(line, "daddr") {
+		t.Errorf("regla solo-src no debe contener 'daddr': %q", line)
+	}
+}
+
+func TestSmForwardTableTemplate_UserRules_IPv6(t *testing.T) {
+	rules := []store.ForwardRule{
+		{ID: 9, Position: 1, Src: "2001:db8::/32", Action: "drop"},
+	}
+	rs := smForwardTableTemplate(nil, nil, nil, nil, nil, nil, rules)
+
+	lineStart := strings.Index(rs, `comment "sm-fwd-user-9"`)
+	if lineStart < 0 {
+		t.Fatal("no se encontro la regla id=9")
+	}
+	lineBeginning := strings.LastIndex(rs[:lineStart], "\n")
+	line := rs[lineBeginning:lineStart]
+	if !strings.Contains(line, "ip6 saddr 2001:db8::/32") {
+		t.Errorf("regla IPv6 debe usar 'ip6 saddr', linea: %q", line)
+	}
+	if strings.Contains(line, "ip  saddr") {
+		t.Errorf("regla IPv6 NO debe usar 'ip saddr' (v4): %q", line)
+	}
+}
+
+func TestSmForwardTableTemplate_NoUserRules_NoExtraStage(t *testing.T) {
+	rs := smForwardTableTemplate(nil, nil, nil, nil, nil, nil, nil)
+	if strings.Contains(rs, "5b ·") {
+		t.Error("sin reglas de usuario, el stage 5b no debe aparecer en el ruleset")
 	}
 }
 
