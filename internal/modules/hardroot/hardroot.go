@@ -34,7 +34,7 @@ func New(logger *sys.SMLogger) *HardRoot {
 	return &HardRoot{scanner: bufio.NewScanner(os.Stdin), logger: logger}
 }
 
-func (h *HardRoot) Order() int   { return 5 }
+func (h *HardRoot) Order() int   { return 6 }
 func (h *HardRoot) Name() string { return "HardRoot — hardening root + sudoers" }
 
 // backupSshdConfig respalda sshd_config antes de la primera modificación, para que

@@ -28,7 +28,7 @@ func New(logger *sys.SMLogger) *Blacklist {
 	return &Blacklist{scanner: bufio.NewScanner(os.Stdin), logger: logger}
 }
 
-func (b *Blacklist) Order() int   { return 4 }
+func (b *Blacklist) Order() int   { return 5 }
 func (b *Blacklist) Name() string { return i18n.T("blacklist.name") }
 
 // Reset borra la blacklist persistida (bans manuales).

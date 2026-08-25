@@ -13,6 +13,7 @@ import (
 	"github.com/terracenter/security-manager-ng/internal/modules/blacklist"
 	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
 	"github.com/terracenter/security-manager-ng/internal/modules/firewall"
+	"github.com/terracenter/security-manager-ng/internal/modules/forward"
 	"github.com/terracenter/security-manager-ng/internal/modules/geoip"
 	"github.com/terracenter/security-manager-ng/internal/modules/hardroot"
 	"github.com/terracenter/security-manager-ng/internal/modules/infra"
@@ -61,6 +62,7 @@ func initModules(logger *sys.SMLogger) []modules.Module {
 		firewall.New(logger),
 		whitelist.New(),
 		geoip.New(logger),
+		forward.New(),
 		blacklist.New(logger),
 		hardroot.New(logger),
 		ssh.New(),
@@ -198,7 +200,7 @@ func handleCLI(args []string, logger *sys.SMLogger) int {
 
 	if matched == nil {
 		fmt.Fprintf(os.Stderr, "  %s '%s'.\n", i18n.T("cli.module.not_found"), args[0])
-		fmt.Fprintf(os.Stderr, "  %s: firewall, whitelist, geoip, blacklist, hardroot, ssh, crowdsec\n", i18n.T("cli.module.available"))
+		fmt.Fprintf(os.Stderr, "  %s: firewall, whitelist, geoip, forward, blacklist, hardroot, ssh, crowdsec\n", i18n.T("cli.module.available"))
 		return 1
 	}
 
@@ -248,6 +250,12 @@ func printCLIHelp() {
 	fmt.Println("    apply                                                 " + i18n.T("cli.cmd.geoip.apply"))
 	fmt.Println("    reset                                                 " + i18n.T("cli.cmd.geoip.reset"))
 	fmt.Println("    preview                                               " + i18n.T("cli.cmd.geoip.preview"))
+	fmt.Println()
+	fmt.Println("  " + i18n.T("cli.cmd.forward"))
+	fmt.Println("    add   --src CIDR --dst CIDR --port N|N-M --proto tcp|udp --action accept|drop [--comment C] [--tag T]   " + i18n.T("cli.cmd.forward.add"))
+	fmt.Println("    list  [--tag T]                                       " + i18n.T("cli.cmd.forward.list"))
+	fmt.Println("    del   <id>                                            " + i18n.T("cli.cmd.forward.del"))
+	fmt.Println("    move  <id> <newpos>                                   " + i18n.T("cli.cmd.forward.move"))
 	fmt.Println()
 	fmt.Println("  " + i18n.T("cli.cmd.blacklist"))
 	fmt.Println("    add <ip|CIDR>                                         " + i18n.T("cli.cmd.blacklist.add"))
