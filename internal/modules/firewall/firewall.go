@@ -779,19 +779,46 @@ func (f *Firewall) cliDeny(args []string) bool {
 }
 
 func (f *Firewall) cliListPorts() bool {
-	entries, err := infra.ReadPortEntries(infra.AllowedPortsFile)
+	confPorts, err := infra.ReadPortEntries(infra.AllowedPortsFile)
 	if err != nil {
 		fmt.Printf(i18n.T("fw.cli.err_read"), infra.AllowedPortsFile, err)
 		return false
 	}
-	if len(entries) == 0 {
-		fmt.Println("  " + i18n.T("fw.cli.no_ports"))
+
+	result, inspectErr := f.Inspect()
+	if inspectErr != nil || !result.TableActive {
+		fmt.Print(i18n.T("fw.cli.ports_not_applied"))
+		if len(confPorts) == 0 {
+			fmt.Println("  " + i18n.T("fw.cli.no_ports"))
+			return true
+		}
+		fmt.Printf(i18n.T("fw.cli.ports_header"), i18n.T("fw.cli.ports_cols"), "PROTO", "TIER", "COMENTARIO", "FECHA")
+		fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 58))
+		for _, e := range confPorts {
+			fmt.Printf(i18n.T("fw.cli.ports_row_planned"), e.Port, e.Proto, e.Tier, e.Comment, e.Date)
+		}
+		fmt.Println()
 		return true
 	}
-	fmt.Printf(i18n.T("fw.cli.ports_header"), i18n.T("fw.cli.ports_cols"), "PROTO", "COMENTARIO", "FECHA")
-	fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 58))
-	for _, e := range entries {
-		fmt.Printf(i18n.T("fw.cli.ports_row"), e.Port, e.Proto, e.Comment, e.Date)
+
+	ports := parseEffectivePorts(result.Chains["input"].rules, confPorts)
+	bypass := parseManagementBypass(result.Chains["input"].rules)
+
+	if len(ports) == 0 {
+		fmt.Println("  " + i18n.T("fw.cli.no_ports"))
+	} else {
+		fmt.Printf(i18n.T("fw.cli.ports_header_full"), i18n.T("fw.cli.ports_cols"), "PROTO", "ORIGEN", "TIER", "COMENTARIO", "FECHA")
+		fmt.Println(i18n.T("fw.cli.ports_sep") + strings.Repeat("─", 90))
+		for _, p := range ports {
+			fmt.Printf(i18n.T("fw.cli.ports_row_full"), p.Port, p.Proto, p.Origen, p.Tier, p.Comment, p.Date)
+		}
+	}
+
+	if len(bypass) > 0 {
+		fmt.Print(i18n.T("fw.cli.ports_mgmt_header"))
+		for _, b := range bypass {
+			fmt.Printf(i18n.T("fw.cli.ports_mgmt_row"), b.Interfaz, b.Comment)
+		}
 	}
 	fmt.Println()
 	return true
