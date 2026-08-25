@@ -45,7 +45,7 @@ func (f *Firewall) Reset() {
 	} else {
 		fmt.Println("  " + i18n.T("fw.reset.removed_table"))
 	}
-	for _, path := range []string{infra.RulesetFile, infra.BackupFile, infra.OptionsFile, infra.AllowedPortsFile} {
+	for _, path := range []string{infra.RulesetFile, infra.BackupFile, infra.OptionsFile, infra.AllowedPortsFile, infra.ForwardDBFile} {
 		if err := os.Remove(path); err == nil {
 			fmt.Printf("  %s %s\n", i18n.T("fw.reset.removed_file"), path)
 		} else if !os.IsNotExist(err) {
