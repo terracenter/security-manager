@@ -40,6 +40,10 @@ sudo security-manager-ng geoip add VE CO PE
 
 sudo security-manager-ng blacklist add 198.51.100.7
 
+sudo security-manager-ng forward add --src 172.17.0.0/16 --dst 1.1.1.1/32 --action drop --comment "block exfil"
+sudo security-manager-ng forward add --src 172.17.0.0/16 --action accept --comment "allow docker"
+sudo security-manager-ng forward list
+
 sudo security-manager-ng firewall estado
 sudo security-manager-ng ssh estado
 
@@ -112,6 +116,14 @@ Everything not explicitly accepted falls to `policy drop`.
 > **Critical order:** blacklist (5) before whitelist (6); whitelist (6) before GeoIP (7).
 
 Full pipeline documentation: [`docs/arquitectura-pipeline-nftables.md`](docs/arquitectura-pipeline-nftables.md)
+
+### Transit between interfaces — `inet sm_forward` table
+
+Traffic **passing through** the host (routing, Docker containers, VPN) is filtered in a
+separate table, `inet sm_forward`, with its own MikroTik-style user rule engine
+(`security-manager-ng forward add/list/del/move`, first match wins). Complete documentation,
+including why it coexists with the `ip`/`ip6` tables that Docker manages via
+`iptables-nft`: [`docs/arquitectura-pipeline-forward.md`](docs/arquitectura-pipeline-forward.md)
 
 ### Native sets (replace ipset)
 
@@ -271,8 +283,9 @@ production without checking that validation's status first.
 
 - **Complete modules** (interactive menu + CLI): `firewall` (declarative nftables ruleset +
   safe-apply), `whitelist` (Tier A/B, syncs CrowdSec and fail2ban), `geoip` (allowlist per
-  country via ipdeny.com), `blacklist` (manual IPv4/IPv6 bans), `hardroot` (root/sudoers hardening),
-  `ssh` (`sshd_config.d` hardening), `fail2ban` (read-only monitoring).
+  country via ipdeny.com), `blacklist` (manual IPv4/IPv6 bans), `forward` (MikroTik-style rule
+  engine, SQLite embedded), `hardroot` (root/sudoers hardening), `ssh` (`sshd_config.d` hardening),
+  `fail2ban` (read-only monitoring).
 - **CrowdSec**: integrated as threat detection backend — optional per-distro prerequisite,
   `crowdsec-blacklists` set in nftables ruleset, allowlist sync from whitelist Tier B. Not yet
   exposed as its own menu/CLI module (that's a pending improvement, not implemented).
