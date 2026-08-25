@@ -139,8 +139,9 @@ func scheduleDeadman(p Plan) (string, error) {
 
 	var deadmanArgs []string
 	if _, err := os.Stat(p.BackupFile); os.IsNotExist(err) {
-		deadmanArgs = []string{"nft", "delete", "table", "inet", "sm"}
-		fmt.Println("  [safeapply] Primera instalación — deadman: nft delete table inet sm")
+		deadmanArgs = []string{"sh", "-c",
+			"nft delete table inet sm; nft delete table inet sm_nat; nft delete table inet sm_forward"}
+		fmt.Println("  [safeapply] Primera instalación — deadman: borra las 3 tablas SM-NG (sm, sm_nat, sm_forward)")
 	} else {
 		deadmanArgs = []string{"nft", "-f", p.BackupFile}
 	}
@@ -196,13 +197,35 @@ func cancelDeadman(unit string) error {
 	return nil
 }
 
+// smTableNames son las 3 tablas nftables que produce infra.GenerateRuleset. Mantener esta
+// lista sincronizada con la de scheduleDeadman() más abajo — esa usa un shell literal
+// (corre standalone vía systemd-run, no puede invocar esta función) y por eso no puede
+// compartir el slice directamente.
+var smTableNames = []string{"sm", "sm_nat", "sm_forward"}
+
+// DeleteAllSmTables borra las 3 tablas nftables de SM-NG, intentando las 3 aunque alguna
+// falle. Retorna un error combinado con el detalle de cada fallo si hubo alguno — el
+// llamador decide si un fallo aislado (tabla ya no existía) es aceptable o no.
+func DeleteAllSmTables() error {
+	var errs []string
+	for _, t := range smTableNames {
+		out, err := exec.Command("nft", "delete", "table", "inet", t).CombinedOutput()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("inet %s: %s", t, strings.TrimSpace(string(out))))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("nft delete table: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 // rollback restaura el backup aplicando nft -f BackupFile.
-// En primera instalación (sin BackupFile), usa nft delete table inet sm.
+// En primera instalación (sin BackupFile), usa DeleteAllSmTables.
 func rollback(p Plan) error {
 	if _, err := os.Stat(p.BackupFile); os.IsNotExist(err) {
-		out, err := exec.Command("nft", "delete", "table", "inet", "sm").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("nft delete table inet sm (rollback primera-vez): %s", strings.TrimSpace(string(out)))
+		if err := DeleteAllSmTables(); err != nil {
+			return fmt.Errorf("rollback primera-vez: %w", err)
 		}
 		return nil
 	}

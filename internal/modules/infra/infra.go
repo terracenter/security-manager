@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
+	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
 // Rutas y constantes compartidas entre módulos (SSoT).
@@ -806,7 +807,7 @@ table inet sm {
 		geoipRulesBlock(geoip),
 		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
-	) + smNatTableTemplate + smForwardTableTemplate
+	) + smNatTableTemplate + smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6)
 }
 
 func formatSet(name, addrType, _ string, elements []string) string {
@@ -915,6 +916,26 @@ func EnsureSmNftPersistence() error {
 		}()
 	}
 
+	if hasRealContent(data) {
+		timestamp := time.Now().Format("20060102-150405")
+		backupPath := nftConf + ".pre-sm-ng-" + timestamp
+		if err := os.WriteFile(backupPath, data, 0o644); err != nil {
+			return fmt.Errorf("no se pudo respaldar %s antes de reemplazar: %w", nftConf, err)
+		}
+		friendlyTime := time.Now().Format("2006-01-02 15:04:05")
+		header := fmt.Sprintf(
+			"#!/usr/sbin/nft -f\n# Reemplazado por Security-Manager-NG el %s por %s\n"+
+				"# Contenido original (no generado por SM-NG) respaldado en %s\n",
+			friendlyTime, sys.CurrentUser(), backupPath)
+		newContent := header + "\n# Security Manager NG\n" + includeLine + "\n"
+
+		if err := os.WriteFile(nftConf, []byte(newContent), 0o644); err != nil {
+			return fmt.Errorf("no se pudo escribir la persistencia en %s: %w", nftConf, err)
+		}
+		fmt.Println("  [persist] " + nftConf + " tenía contenido propio — respaldado en " + backupPath + " y reemplazado.")
+		return nil
+	}
+
 	f, err := os.OpenFile(nftConf, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("no se pudo escribir %s — persistencia manual requerida: %w", nftConf, err)
@@ -925,6 +946,20 @@ func EnsureSmNftPersistence() error {
 	}
 	fmt.Println("  [persist] sm.nft incluido en /etc/nftables.conf para persistencia en boot.")
 	return nil
+}
+
+// hasRealContent detecta si un archivo nftables.conf tiene reglas reales (no solo
+// shebang/comentarios/lineas vacias) que SM-NG no puso — usado para decidir si hace
+// falta backup antes de reemplazar en vez de solo agregar el include al final.
+func hasRealContent(data []byte) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // RemoveSmNftPersistence quita el include de sm.nft de /etc/nftables.conf, simétrico
