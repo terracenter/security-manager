@@ -701,7 +701,7 @@ func GenerateRulesetWith(svc GlobalServices, sshPort int, sshEnabled bool, geoip
 
 	sshLine := ""
 	if sshEnabled {
-		sshLine = fmt.Sprintf("        tcp dport %d accept%s\n", sshPort, sshComment)
+		sshLine = fmt.Sprintf("        tcp dport %d accept comment \"sm-ssh\"%s\n", sshPort, sshComment)
 	}
 
 	tailscaleRule := ""
