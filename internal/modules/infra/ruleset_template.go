@@ -33,7 +33,13 @@
 // Pero eso requiere coordinacion con tests Y un PR dedicado.
 package infra
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"strings"
+
+	"github.com/terracenter/security-manager-ng/internal/store"
+)
 
 // smNatTableTemplate es el bloque adicional que se concatena al ruleset.
 // Contiene la tabla `sm_nat` para reglas NAT (sNAT, dNAT, masquerade).
@@ -93,16 +99,18 @@ table inet sm_nat {
 //     sets entre tablas — confirmado con `nft -c` real y con
 //     `man.archlinux.org/man/nft.8`.
 //  5. Blacklist drop.
+//     5b. Reglas de usuario (motor estilo MikroTik, T-4.10) — primera
+//     coincidencia gana, igual que /ip firewall filter de RouterOS.
 //  6. Default DROP (clase 028: default policy drop).
 //
 // Notas de diseno:
 //   - NO includes servicios (SSH/80/443) en forward: son para `input`
-//     (host local), no para trafico en transito entre interfaces. El
-//     operador agrega reglas de forward especificas con
-//     `nft add rule inet sm_forward forward ...` o via wizard futuro.
+//     (host local), no para trafico en transito entre interfaces.
 //   - Comments `sm-fwd-*` (prefijo `fwd`) para distinguir de las reglas
-//     de `input` (`sm-*`) en `nft list` y en `inspect/`.
-func smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6 []string) string {
+//     de `input` (`sm-*`) en `nft list` y en `inspect/`. Las reglas de
+//     usuario usan `sm-fwd-user-<id>` (ID estable de internal/store, no
+//     la posicion — la posicion puede cambiar con `forward move`).
+func smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6 []string, userRules []store.ForwardRule) string {
 	return fmt.Sprintf(`
 
 # Tabla Forward (sm_forward) — trafico en transito entre interfaces.
@@ -146,7 +154,7 @@ table inet sm_forward {
         # 5 · Blacklist
         ip  saddr @sm_blacklist4 drop comment "sm-fwd-blacklist4"
         ip6 saddr @sm_blacklist6 drop comment "sm-fwd-blacklist6"
-
+%s
         # 6 · Default DROP
         log prefix "SM-FWD-DROP-DEFAULT " drop comment "sm-fwd-default-drop"
     }
@@ -158,5 +166,59 @@ table inet sm_forward {
 		formatSet(SetImmune6, "ipv6_addr", `Intocables IPv6 (Tier B)`, im6),
 		formatSet(SetBlacklist4, "ipv4_addr", `Bans manuales IPv4`, bl4),
 		formatSet(SetBlacklist6, "ipv6_addr", `Bans manuales IPv6`, bl6),
+		renderForwardUserRules(userRules),
 	)
+}
+
+// renderForwardUserRules renderiza las reglas del motor estilo MikroTik
+// (T-4.10) en el orden dado (rules ya viene ordenado por Position —
+// store.ListForwardRules hace ORDER BY position ASC). Primera coincidencia
+// gana: por eso el orden de rules == orden de las lineas generadas.
+//
+// Validacion (proto obligatorio si hay port_range, familia v4/v6 consistente
+// entre src/dst) vive en el limite del sistema — internal/modules/forward,
+// al hacer `add` — no aqui. Esta funcion confia en que toda fila de
+// internal/store ya paso esa validacion (unico punto de escritura).
+func renderForwardUserRules(rules []store.ForwardRule) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	var block strings.Builder
+	block.WriteString("\n        # 5b · Reglas de usuario forward (T-4.10, first-match-wins)\n")
+	for _, r := range rules {
+		block.WriteString("        " + renderForwardRule(r) + "\n")
+	}
+	return block.String()
+}
+
+func renderForwardRule(r store.ForwardRule) string {
+	var b strings.Builder
+	if r.Src != "" {
+		fmt.Fprintf(&b, "%s saddr %s ", addrFamilyKeyword(r.Src), r.Src)
+	}
+	if r.Dst != "" {
+		fmt.Fprintf(&b, "%s daddr %s ", addrFamilyKeyword(r.Dst), r.Dst)
+	}
+	if r.PortRange != "" {
+		fmt.Fprintf(&b, "%s dport %s ", r.Proto, r.PortRange)
+	} else if r.Proto != "" {
+		fmt.Fprintf(&b, "meta l4proto %s ", r.Proto)
+	}
+	fmt.Fprintf(&b, "%s comment \"sm-fwd-user-%d\"", r.Action, r.ID)
+	return b.String()
+}
+
+// addrFamilyKeyword retorna "ip" o "ip6" segun la familia de addr (IP suelta
+// o CIDR). Asume addr ya validado en el limite (internal/modules/forward) —
+// si no es parseable, retorna "ip" como fallback conservador (nft rechazara
+// la linea en `nft -c -f`, que es el guardrail real antes de aplicar).
+func addrFamilyKeyword(addr string) string {
+	ipPart := addr
+	if idx := strings.Index(addr, "/"); idx >= 0 {
+		ipPart = addr[:idx]
+	}
+	if ip := net.ParseIP(ipPart); ip != nil && ip.To4() == nil {
+		return "ip6"
+	}
+	return "ip"
 }

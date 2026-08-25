@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/terracenter/security-manager-ng/internal/modules/crowdsec"
+	"github.com/terracenter/security-manager-ng/internal/store"
 	"github.com/terracenter/security-manager-ng/internal/sys"
 )
 
@@ -46,6 +47,11 @@ const (
 
 	// Puertos adicionales abiertos por el operador vía CLI (allow/deny).
 	AllowedPortsFile = ConfDir + "/allowed_ports.conf"
+
+	// Base SQLite del motor de reglas forward estilo MikroTik (T-4.10).
+	// Nombre genérico ("sm-ng.db", no "forward.db"): a futuro otros módulos
+	// (whitelist/immune/blacklist) podrían compartir el mismo archivo.
+	ForwardDBFile = ConfDir + "/sm-ng.db"
 
 	// GeoIP
 	GeoIPDir             = ConfDir + "/geoip"
@@ -713,6 +719,7 @@ func GenerateRulesetWith(svc GlobalServices, sshPort int, sshEnabled bool, geoip
 	im6 := ACLAddresses(imEntries6)
 	bl4, _ := ReadLines(Blacklist4File)
 	bl6, _ := ReadLines(Blacklist6File)
+	fwdRules := readForwardRulesForRuleset()
 
 	return fmt.Sprintf(`#!/usr/sbin/nft -f
 # Security-Manager-NG — ruleset base
@@ -807,7 +814,28 @@ table inet sm {
 		geoipRulesBlock(geoip),
 		sshLine,
 		geoRestrictedServicesBlock(geoPorts),
-	) + smNatTableTemplate + smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6)
+	) + smNatTableTemplate + smForwardTableTemplate(wl4, wl6, im4, im6, bl4, bl6, fwdRules)
+}
+
+// readForwardRulesForRuleset lee las reglas del motor forward (T-4.10) desde
+// ForwardDBFile. Tolerante a ausencia igual que ReadPortEntries/ReadACLEntries
+// (ej. tests o un host recién instalado sin /etc/security-manager todavía):
+// si el archivo/directorio no existe o falla el open, retorna nil (chain
+// forward sin reglas de usuario, mismo comportamiento que antes de T-4.10) en
+// vez de propagar el error — GenerateRuleset no tiene forma de reportar error
+// hoy (firma retorna solo string) y este es el mismo patrón tolerante que ya
+// usan las demás lecturas de config de esta función.
+func readForwardRulesForRuleset() []store.ForwardRule {
+	db, err := store.Open(ForwardDBFile)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = db.Close() }()
+	rules, err := db.ListForwardRules("")
+	if err != nil {
+		return nil
+	}
+	return rules
 }
 
 func formatSet(name, addrType, _ string, elements []string) string {
